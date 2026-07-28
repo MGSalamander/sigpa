@@ -3,8 +3,6 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import matplotlib.pyplot as plt
-import seaborn as sns
 from scipy import stats
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
@@ -767,24 +765,17 @@ def tela_relatorios():
     if st.button("📥 Gerar Relatório PDF Completo", use_container_width=True, type="primary"):
         with st.spinner("Gerando relatório completo com gráficos e análises..."):
             try:
-                from matplotlib import use
-                use('Agg')
-                import matplotlib
-                matplotlib.use('Agg')
-                import matplotlib.pyplot as plt
-                import matplotlib.ticker as ticker
-                
                 buffer = io.BytesIO()
                 doc = SimpleDocTemplate(buffer, pagesize=A4,
-                                        topMargin=2*c,
-                                        bottomMargin=2*c,
-                                        leftMargin=2*c,
-                                        rightMargin=2*c)
+                                        topMargin=2*28.35,
+                                        bottomMargin=2*28.35,
+                                        leftMargin=2*28.35,
+                                        rightMargin=2*28.35)
                 styles = getSampleStyleSheet()
-                c = 28.35  # 1cm em pontos
+                c = 28.35
+                largura = A4[0] - 4*c
                 
                 elementos = []
-                largura = A4[0] - 4*c  # largura útil
                 
                 # ===== CAPA =====
                 elementos.append(Spacer(1, 80))
@@ -812,7 +803,6 @@ def tela_relatorios():
                 elementos.append(Paragraph("2. MATERIAL E MÉTODOS", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
                 
-                # Informações do experimento
                 info_data = [
                     ["Item", "Descrição"],
                     ["Cultura", projeto.get('cultura', '—')],
@@ -836,7 +826,6 @@ def tela_relatorios():
                 elementos.append(info_table)
                 elementos.append(Spacer(1, 12))
                 
-                # Tratamentos
                 tratamentos = query_to_df("SELECT * FROM tratamentos WHERE projeto_id = ?", (projeto_id,))
                 if len(tratamentos) > 0:
                     elementos.append(Paragraph("<b>Tratamentos Avaliados:</b>", styles['Heading2']))
@@ -862,7 +851,6 @@ def tela_relatorios():
                 elementos.append(Paragraph("3. RESULTADOS", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
                 
-                # Buscar todas as variáveis com dados
                 variaveis = query_to_df("""
                     SELECT DISTINCT v.id, v.nome, v.codigo, v.unidade
                     FROM medicoes m
@@ -882,7 +870,6 @@ def tela_relatorios():
                         elementos.append(Paragraph(f"3.{idx+1} {var_nome} ({var_unid})", styles['Heading2']))
                         elementos.append(Spacer(1, 6))
                         
-                        # Buscar dados
                         df_var = query_to_df("""
                             SELECT m.valor, t.codigo as tratamento, t.nome as trat_nome, p.bloco, p.identificacao
                             FROM medicoes m
@@ -901,15 +888,7 @@ def tela_relatorios():
                         
                         desc_data = [["Trat", "Média", "DP", "CV%", "Min", "Max", "N"]]
                         for trat, row in desc.iterrows():
-                            desc_data.append([
-                                trat,
-                                f"{row['mean']:.2f}",
-                                f"{row['std']:.2f}",
-                                f"{row['cv']:.1f}",
-                                f"{row['min']:.2f}",
-                                f"{row['max']:.2f}",
-                                f"{int(row['count'])}"
-                            ])
+                            desc_data.append([trat, f"{row['mean']:.2f}", f"{row['std']:.2f}", f"{row['cv']:.1f}", f"{row['min']:.2f}", f"{row['max']:.2f}", f"{int(row['count'])}"])
                         
                         desc_table = Table(desc_data, colWidths=[largura*0.1, largura*0.15, largura*0.12, largura*0.1, largura*0.12, largura*0.12, largura*0.08])
                         desc_table.setStyle(TableStyle([
@@ -926,76 +905,49 @@ def tela_relatorios():
                         elementos.append(desc_table)
                         elementos.append(Spacer(1, 10))
                         
-                        # --- Gráfico de barras ---
+                        # --- Gráfico de barras com Plotly ---
                         if incluir_graficos:
-                            plt.close('all')
-                            fig, ax = plt.subplots(figsize=(8, 4.5))
-                            
-                            medias = df_var.groupby("tratamento")["valor"].agg(["mean", "std"]).reset_index()
-                            cores = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#C62828', '#00838F', '#F9A825', '#4E342E']
-                            
-                            bars = ax.bar(range(len(medias)), medias['mean'], 
-                                         yerr=medias['std'], capsize=5,
-                                         color=[cores[i % len(cores)] for i in range(len(medias))],
-                                         edgecolor='white', linewidth=1.2)
-                            
-                            # Adicionar valores nas barras
-                            for i, bar in enumerate(bars):
-                                height = bar.get_height()
-                                ax.text(bar.get_x() + bar.get_width()/2., height + height*0.02,
-                                        f'{medias["mean"].iloc[i]:.2f}',
-                                        ha='center', va='bottom', fontsize=8, fontweight='bold')
-                            
-                            ax.set_xticks(range(len(medias)))
-                            ax.set_xticklabels(medias['tratamento'], rotation=0, fontsize=9)
-                            ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
-                            ax.set_title(f'{var_nome} por Tratamento', fontsize=12, fontweight='bold')
-                            ax.spines['top'].set_visible(False)
-                            ax.spines['right'].set_visible(False)
-                            ax.grid(axis='y', alpha=0.3)
-                            
-                            plt.tight_layout()
-                            
-                            img_buffer = io.BytesIO()
-                            fig.savefig(img_buffer, format='png', dpi=180, bbox_inches='tight')
-                            img_buffer.seek(0)
-                            plt.close(fig)
-                            
-                            img = Image(img_buffer, width=largura, height=largura*0.56)
-                            elementos.append(img)
-                            elementos.append(Spacer(1, 10))
+                            try:
+                                medias = df_var.groupby("tratamento")["valor"].mean().reset_index()
+                                stds = df_var.groupby("tratamento")["valor"].std().reset_index()
+                                medias['std'] = stds['valor']
+                                
+                                fig = px.bar(medias, x='tratamento', y='valor', error_y='std',
+                                             title=f'{var_nome} por Tratamento',
+                                             labels={'tratamento': 'Tratamento', 'valor': f'{var_nome} ({var_unid})'},
+                                             color='tratamento', color_discrete_sequence=px.colors.qualitative.Set2,
+                                             text_auto='.2f')
+                                fig.update_layout(showlegend=False, 
+                                                  template='simple_white',
+                                                  font=dict(size=10),
+                                                  title_font=dict(size=12))
+                                fig.update_traces(textposition='outside')
+                                
+                                img_bytes = fig.to_image(format='png', width=700, height=400, scale=2)
+                                img_buffer = io.BytesIO(img_bytes)
+                                img = Image(img_buffer, width=largura, height=largura*0.57)
+                                elementos.append(img)
+                                elementos.append(Spacer(1, 10))
+                            except Exception as e:
+                                elementos.append(Paragraph(f"<i>Gráfico não disponível: {str(e)[:50]}</i>", styles['Normal']))
                         
-                        # --- Boxplot ---
+                        # --- Boxplot com Plotly ---
                         if incluir_graficos:
-                            plt.close('all')
-                            fig, ax = plt.subplots(figsize=(8, 4))
-                            
-                            tratamentos_lista = df_var['tratamento'].unique()
-                            dados_box = [df_var[df_var['tratamento'] == t]['valor'].values for t in tratamentos_lista]
-                            
-                            bp = ax.boxplot(dados_box, labels=tratamentos_lista, patch_artist=True,
-                                           medianprops={'color': 'black', 'linewidth': 2})
-                            
-                            for patch, color in zip(bp['boxes'], cores[:len(tratamentos_lista)]):
-                                patch.set_facecolor(color)
-                                patch.set_alpha(0.6)
-                            
-                            ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
-                            ax.set_title(f'Boxplot - {var_nome}', fontsize=12, fontweight='bold')
-                            ax.spines['top'].set_visible(False)
-                            ax.spines['right'].set_visible(False)
-                            ax.grid(axis='y', alpha=0.3)
-                            
-                            plt.tight_layout()
-                            
-                            img_buffer2 = io.BytesIO()
-                            fig.savefig(img_buffer2, format='png', dpi=180, bbox_inches='tight')
-                            img_buffer2.seek(0)
-                            plt.close(fig)
-                            
-                            img2 = Image(img_buffer2, width=largura, height=largura*0.5)
-                            elementos.append(img2)
-                            elementos.append(Spacer(1, 10))
+                            try:
+                                fig_box = px.box(df_var, x='tratamento', y='valor',
+                                                 title=f'Boxplot - {var_nome}',
+                                                 labels={'tratamento': 'Tratamento', 'valor': f'{var_nome} ({var_unid})'},
+                                                 color='tratamento', color_discrete_sequence=px.colors.qualitative.Set2)
+                                fig_box.update_layout(showlegend=False, template='simple_white',
+                                                      font=dict(size=10), title_font=dict(size=12))
+                                
+                                img_bytes2 = fig_box.to_image(format='png', width=700, height=380, scale=2)
+                                img_buffer2 = io.BytesIO(img_bytes2)
+                                img2 = Image(img_buffer2, width=largura, height=largura*0.54)
+                                elementos.append(img2)
+                                elementos.append(Spacer(1, 10))
+                            except:
+                                pass
                         
                         # --- ANOVA ---
                         if incluir_anova and len(df_var) >= 6:
@@ -1006,17 +958,13 @@ def tela_relatorios():
                             
                             grupos = [g["valor"].values for _, g in df_var.groupby("tratamento")]
                             
-                            # Teste de normalidade
                             residuos = df_var.groupby("tratamento")["valor"].apply(lambda x: x - x.mean())
                             _, shapiro_p = shapiro(residuos)
-                            
-                            # ANOVA
                             f_stat, f_p = f_oneway(*grupos)
                             
                             anova_data = [
                                 ["Fonte", "SQ", "GL", "QM", "F", "p-valor"],
-                                ["Tratamentos", f"{sum(len(g)*(g.mean()-df_var['valor'].mean())**2 for g in grupos):.2f}", 
-                                 f"{len(grupos)-1}", "...", f"{f_stat:.4f}", f"{f_p:.6f}"],
+                                ["Tratamentos", f"{sum(len(g)*(g.mean()-df_var['valor'].mean())**2 for g in grupos):.2f}", f"{len(grupos)-1}", "...", f"{f_stat:.4f}", f"{f_p:.6f}"],
                                 ["Resíduo", "...", f"{len(df_var)-len(grupos)}", "...", "", ""],
                                 ["Total", "...", f"{len(df_var)-1}", "", "", ""]
                             ]
@@ -1035,20 +983,14 @@ def tela_relatorios():
                             elementos.append(anova_table)
                             elementos.append(Spacer(1, 6))
                             
-                            # Interpretação
-                            elementos.append(Paragraph(
-                                f"<b>Teste de Normalidade (Shapiro-Wilk):</b> p = {shapiro_p:.4f} {'✅ Normal' if shapiro_p > 0.05 else '⚠️ Não normal'}",
-                                styles['Normal']))
+                            elementos.append(Paragraph(f"<b>Normalidade (Shapiro-Wilk):</b> p = {shapiro_p:.4f} {'✅ Normal' if shapiro_p > 0.05 else '⚠️ Não normal'}", styles['Normal']))
                             elementos.append(Spacer(1, 4))
                             
                             if f_p < 0.05:
-                                elementos.append(Paragraph(
-                                    f"<b>Resultado da ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Diferença significativa</b> entre tratamentos (p &lt; 0,05) ✅",
-                                    styles['Normal']))
+                                elementos.append(Paragraph(f"<b>Resultado ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Diferença significativa</b> (p &lt; 0,05) ✅", styles['Normal']))
                                 elementos.append(Spacer(1, 6))
                                 
-                                # Teste de Tukey
-                                elementos.append(Paragraph("<b>Teste de Tukey (Comparação Múltipla):</b>", styles['Heading3']))
+                                elementos.append(Paragraph("<b>Teste de Tukey:</b>", styles['Heading3']))
                                 
                                 tukey = pairwise_tukeyhsd(df_var["valor"], df_var["tratamento"], alpha=0.05)
                                 
@@ -1104,49 +1046,32 @@ def tela_relatorios():
                                 ]))
                                 elementos.append(letras_table)
                                 elementos.append(Spacer(1, 4))
-                                elementos.append(Paragraph(
-                                    "<i>Médias seguidas pela mesma letra não diferem entre si pelo teste de Tukey a 5% de probabilidade.</i>",
-                                    styles['Normal']))
+                                elementos.append(Paragraph("<i>Médias com mesma letra não diferem (Tukey 5%).</i>", styles['Normal']))
                                 
-                                # Gráfico com letras
+                                # Gráfico com letras usando Plotly
                                 if incluir_graficos:
-                                    plt.close('all')
-                                    fig, ax = plt.subplots(figsize=(8, 4.5))
-                                    
-                                    medias_letras = medias_sort.reset_index()
-                                    medias_letras.columns = ['tratamento', 'media']
-                                    medias_letras['letra'] = medias_letras['tratamento'].map(letras)
-                                    
-                                    bars = ax.bar(range(len(medias_letras)), medias_letras['media'],
-                                                 color=[cores[i % len(cores)] for i in range(len(medias_letras))],
-                                                 edgecolor='white', linewidth=1.2)
-                                    
-                                    for i, (_, row) in enumerate(medias_letras.iterrows()):
-                                        ax.text(i, row['media'] + row['media']*0.02,
-                                                f"{row['media']:.2f}{row['letra']}",
-                                                ha='center', va='bottom', fontsize=9, fontweight='bold')
-                                    
-                                    ax.set_xticks(range(len(medias_letras)))
-                                    ax.set_xticklabels(medias_letras['tratamento'], fontsize=9)
-                                    ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
-                                    ax.set_title(f'{var_nome} - Médias com Letras de Tukey', fontsize=12, fontweight='bold')
-                                    ax.spines['top'].set_visible(False)
-                                    ax.spines['right'].set_visible(False)
-                                    ax.grid(axis='y', alpha=0.3)
-                                    
-                                    plt.tight_layout()
-                                    
-                                    img_buffer3 = io.BytesIO()
-                                    fig.savefig(img_buffer3, format='png', dpi=180, bbox_inches='tight')
-                                    img_buffer3.seek(0)
-                                    plt.close(fig)
-                                    
-                                    img3 = Image(img_buffer3, width=largura, height=largura*0.56)
-                                    elementos.append(img3)
+                                    try:
+                                        medias_letras = medias_sort.reset_index()
+                                        medias_letras.columns = ['tratamento', 'media']
+                                        medias_letras['letra'] = medias_letras['tratamento'].map(letras)
+                                        medias_letras['label'] = medias_letras['media'].round(2).astype(str) + medias_letras['letra']
+                                        
+                                        fig_tk = px.bar(medias_letras, x='tratamento', y='media', text='label',
+                                                        title=f'{var_nome} - Médias com Letras de Tukey',
+                                                        labels={'tratamento': 'Tratamento', 'media': f'{var_nome} ({var_unid})'},
+                                                        color='tratamento', color_discrete_sequence=px.colors.qualitative.Set2)
+                                        fig_tk.update_layout(showlegend=False, template='simple_white',
+                                                             font=dict(size=10), title_font=dict(size=12))
+                                        fig_tk.update_traces(textposition='outside')
+                                        
+                                        img_bytes3 = fig_tk.to_image(format='png', width=700, height=400, scale=2)
+                                        img_buffer3 = io.BytesIO(img_bytes3)
+                                        img3 = Image(img_buffer3, width=largura, height=largura*0.57)
+                                        elementos.append(img3)
+                                    except:
+                                        pass
                             else:
-                                elementos.append(Paragraph(
-                                    f"<b>Resultado da ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Não houve diferença significativa</b> entre tratamentos (p &gt; 0,05)",
-                                    styles['Normal']))
+                                elementos.append(Paragraph(f"<b>Resultado ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Sem diferença significativa</b> (p &gt; 0,05)", styles['Normal']))
                         
                         elementos.append(Spacer(1, 16))
                 
@@ -1154,7 +1079,7 @@ def tela_relatorios():
                 if recomendacoes:
                     elementos.append(Paragraph("4. RECOMENDAÇÕES TÉCNICAS", styles['Heading1']))
                     elementos.append(Spacer(1, 8))
-                    elementos.append(Paragraph(recomendações, styles['Normal']))
+                    elementos.append(Paragraph(recomendacoes, styles['Normal']))
                     elementos.append(Spacer(1, 12))
                 
                 # ===== 5. DADOS BRUTOS =====
@@ -1192,7 +1117,6 @@ def tela_relatorios():
                         ]))
                         elementos.append(brutos_table)
                 
-                # Gerar PDF
                 doc.build(elementos)
                 buffer.seek(0)
                 
@@ -1225,7 +1149,6 @@ def tela_relatorios():
         """, (projeto_id,))
         csv = dados.to_csv(index=False).encode("utf-8")
         st.download_button(label="📥 Baixar CSV", data=csv, file_name=f"dados_{projeto['titulo'][:30]}.csv", mime="text/csv")
-
 def tela_compartilhar():
     st.title("👥 Compartilhar Projetos")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
