@@ -4,7 +4,6 @@ numpy
 scipy
 statsmodels
 openpyxl
-matplotlib
-seaborn
 reportlab
 plotly
+kaleido
