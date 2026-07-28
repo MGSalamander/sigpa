@@ -6,4 +6,4 @@ statsmodels
 openpyxl
 reportlab
 plotly
-kaleido
+matplotlib
