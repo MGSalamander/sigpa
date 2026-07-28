@@ -1338,144 +1338,106 @@ def main():
         paginas[menu]()
 
 def processar_importacao(df, projeto_id, modo_import):
-    """Função auxiliar para processar a importação (tanto de arquivo quanto de texto colado)"""
+    """Importa dados para o projeto"""
     colunas_necessarias = ['parcela', 'variavel_codigo', 'valor']
     colunas_faltando = [c for c in colunas_necessarias if c not in df.columns]
-    
+
     if colunas_faltando:
         st.error(f"❌ Colunas obrigatórias faltando: {', '.join(colunas_faltando)}")
         st.write(f"Colunas encontradas: {', '.join(df.columns)}")
         return
-    
-    parcelas_csv = df['parcela'].unique()
-    vars_csv = df['variavel_codigo'].unique()
-    
+
+    # Diagnóstico de parcelas e variáveis
+    parcelas_csv = [str(p).strip() for p in df['parcela'].unique()]
+    vars_csv = [str(v).strip() for v in df['variavel_codigo'].unique()]
+
     parcelas_bd = set(query_to_df("SELECT identificacao FROM parcelas WHERE projeto_id = ?", (projeto_id,))["identificacao"].tolist())
     vars_bd = set(query_to_df("SELECT codigo FROM variaveis")["codigo"].tolist())
-    
-    parcelas_nok = [p for p in parcelas_csv if p.strip() not in parcelas_bd]
-    vars_nok = [v for v in vars_csv if v.strip() not in vars_bd]
-    
+
+    parcelas_nok = [p for p in parcelas_csv if p not in parcelas_bd]
+    vars_nok = [v for v in vars_csv if v not in vars_bd]
+
     st.markdown("---")
-    st.subheader("🔍 Diagnóstico antes de importar")
-    
+    st.subheader("🔍 Diagnóstico")
+
     col_d1, col_d2 = st.columns(2)
     with col_d1:
         st.write(f"**Parcelas no arquivo:** {len(parcelas_csv)}")
         if parcelas_nok:
-            st.error(f"❌ {len(parcelas_nok)} parcelas NÃO encontradas:")
-            st.code(", ".join(parcelas_nok))
+            st.error(f"❌ {len(parcelas_nok)} NÃO encontradas: {', '.join(parcelas_nok[:5])}")
         else:
-            st.success(f"✅ Todas as {len(parcelas_csv)} parcelas existem")
-    
+            st.success(f"✅ Todas as {len(parcelas_csv)} existem no sistema")
+
     with col_d2:
         st.write(f"**Variáveis no arquivo:** {len(vars_csv)}")
         if vars_nok:
-            st.error(f"❌ {len(vars_nok)} variáveis NÃO encontradas:")
-            st.code(", ".join(vars_nok))
-            st.info("💡 Cadastre em **📏 Variáveis → ➕ Nova Variável**")
+            st.error(f"❌ {len(vars_nok)} NÃO encontradas: {', '.join(vars_nok[:5])}")
         else:
-            st.success(f"✅ Todas as {len(vars_csv)} variáveis existem")
-    
+            st.success(f"✅ Todas as {len(vars_csv)} existem no sistema")
+
     if parcelas_nok or vars_nok:
         st.warning("⚠️ Corrija os problemas acima antes de importar.")
         return
-    
-    st.success("✅ Diagnóstico OK! Pronto para importar.")
-    
-    if st.button("📥 Importar Dados", type="primary", key=f"btn_import_{id(df)}"):
-        substituir = "Substituir" in modo_import
-        
-        if substituir:
-            confirmar = st.checkbox("✅ Sim, quero substituir todos os dados deste projeto", key=f"confirm_{id(df)}")
-            if not confirmar:
-                st.info("Marque a caixa de confirmação acima e clique novamente.")
-                st.stop()
-        
-        count = 0
-        erros = 0
-        erros_detalhes = []
-        
-        if substituir:
-            with st.spinner("Apagando dados antigos..."):
-                execute_query("""
-                    DELETE FROM medicoes WHERE parcela_id IN 
-                    (SELECT id FROM parcelas WHERE projeto_id = ?)
-                """, (projeto_id,))
-            st.info("✅ Dados antigos removidos. Importando novos...")
-        
-        with st.spinner(f"Importando {len(df)} registros..."):
-            progresso = st.progress(0)
-            
-            for idx, (_, row) in enumerate(df.iterrows()):
-                try:
-                    parcela_id = str(row["parcela"]).strip()
-                    var_cod = str(row["variavel_codigo"]).strip()
-                    valor = float(row["valor"])
+
+    substituir = "Substituir" in modo_import
+    session_key = f"import_confirmado_{projeto_id}"
+
+    # Inicializar estado de confirmação
+    if session_key not in st.session_state:
+        st.session_state[session_key] = False
+
+    if substituir:
+        st.warning("⚠️ ATENÇÃO: Os dados atuais deste projeto serão APAGADOS e substituídos pelos novos!")
+
+        if st.session_state[session_key]:
+            st.info("✅ Confirmação dada. Clique em **Confirmar e Importar** para prosseguir.")
+
+        col_btn = st.columns([1, 3])
+        with col_btn[0]:
+            if st.button("✅ Confirmar e Importar", type="primary", key=f"btn_confirm_substituir_{projeto_id}"):
+                if not st.session_state[session_key]:
+                    st.session_state[session_key] = True
+                    st.rerun()
+                else:
+                    # Já confirmou - executar importação
+                    with st.spinner("Apagando dados antigos..."):
+                        execute_query("""
+                            DELETE FROM medicoes WHERE parcela_id IN 
+                            (SELECT id FROM parcelas WHERE projeto_id = ?)
+                        """, (projeto_id,))
                     
-                    parc = query_to_df(
-                        "SELECT id FROM parcelas WHERE projeto_id = ? AND identificacao = ?",
-                        (projeto_id, parcela_id)
-                    )
-                    if len(parc) == 0:
-                        erros += 1
-                        erros_detalhes.append(f"Linha {idx+2}: Parcela '{parcela_id}' não encontrada")
-                        progresso.progress((idx + 1) / len(df))
-                        continue
+                    with st.spinner(f"Importando {len(df)} registros..."):
+                        count, erros, erros_detalhes = executar_importacao(df, projeto_id)
+                        
+                    st.session_state[session_key] = False
                     
-                    var = query_to_df(
-                        "SELECT id FROM variaveis WHERE codigo = ?",
-                        (var_cod,)
-                    )
-                    if len(var) == 0:
-                        erros += 1
-                        erros_detalhes.append(f"Linha {idx+2}: Variável '{var_cod}' não encontrada")
-                        progresso.progress((idx + 1) / len(df))
-                        continue
+                    st.markdown("---")
+                    st.success(f"✅ **Dados substituídos com sucesso!**")
+                    st.write(f"📥 **{count}** registros importados")
+                    if erros > 0:
+                        st.warning(f"❌ **{erros}** erros")
+                        with st.expander("Ver detalhes"):
+                            for e in erros_detalhes[:20]:
+                                st.write(f"• {e}")
                     
-                    data_val = row.get("data", "")
-                    if pd.isna(data_val) or str(data_val).strip() == "":
-                        data_val = datetime.now().strftime("%Y-%m-%d")
-                    else:
-                        data_val = str(data_val).strip()
-                    
-                    estadio_val = row.get("estadio", "")
-                    if pd.isna(estadio_val):
-                        estadio_val = ""
-                    else:
-                        estadio_val = str(estadio_val).strip()
-                    
-                    execute_query(
-                        """INSERT INTO medicoes 
-                           (parcela_id, variavel_id, valor, data_medicao, estadio_fenologico) 
-                           VALUES (?, ?, ?, ?, ?)""",
-                        (parc.iloc[0]["id"], var.iloc[0]["id"], valor, data_val, estadio_val)
-                    )
-                    count += 1
-                    
-                except Exception as e:
-                    erros += 1
-                    erros_detalhes.append(f"Linha {idx+2}: {str(e)[:100]}")
-                
-                progresso.progress((idx + 1) / len(df))
-        
-        st.markdown("---")
-        if substituir:
-            st.success(f"✅ **Dados substituídos com sucesso!**")
-        else:
+                    if count > 0:
+                        st.rerun()
+    else:
+        if st.button("📥 Importar Dados", type="primary", key=f"btn_import_adicionar_{projeto_id}"):
+            with st.spinner(f"Importando {len(df)} registros..."):
+                count, erros, erros_detalhes = executar_importacao(df, projeto_id)
+
+            st.markdown("---")
             st.success(f"✅ **Importação concluída!**")
-        
-        st.write(f"📥 **{count}** registros importados com sucesso")
-        if erros > 0:
-            st.warning(f"❌ **{erros}** erros")
-            with st.expander("📋 Ver detalhes dos erros"):
-                for erro in erros_detalhes[:20]:
-                    st.write(f"• {erro}")
-                if len(erros_detalhes) > 20:
-                    st.write(f"... e mais {len(erros_detalhes) - 20} erros")
-        
-        if count > 0:
-            st.rerun()
+            st.write(f"📥 **{count}** registros importados")
+            if erros > 0:
+                st.warning(f"❌ **{erros}** erros")
+                with st.expander("Ver detalhes"):
+                    for e in erros_detalhes[:20]:
+                        st.write(f"• {e}")
+
+            if count > 0:
+                st.rerun()
 
 if __name__ == "__main__":
     main()
