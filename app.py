@@ -1443,5 +1443,69 @@ def processar_importacao(df, projeto_id, modo_import, prefixo="default"):
 
             if count > 0:
                 st.rerun()
+
+def executar_importacao(df, projeto_id):
+    """Executa a importação linha por linha e retorna (count, erros, erros_detalhes)"""
+    count = 0
+    erros = 0
+    erros_detalhes = []
+    progresso = st.progress(0)
+
+    # Converter valor para número, tratando vírgula como decimal
+    df['valor'] = df['valor'].astype(str).str.replace(',', '.').str.strip()
+    df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
+    df = df.dropna(subset=['valor'])
+
+    for idx, (_, row) in enumerate(df.iterrows()):
+        try:
+            parcela_id = str(row["parcela"]).strip()
+            var_cod = str(row["variavel_codigo"]).strip()
+            valor = float(row["valor"])
+
+            parc = query_to_df(
+                "SELECT id FROM parcelas WHERE projeto_id = ? AND identificacao = ?",
+                (projeto_id, parcela_id)
+            )
+            if len(parc) == 0:
+                erros += 1
+                erros_detalhes.append(f"Linha {idx+2}: Parcela '{parcela_id}' não encontrada")
+                progresso.progress((idx + 1) / len(df))
+                continue
+
+            var = query_to_df("SELECT id FROM variaveis WHERE codigo = ?", (var_cod,))
+            if len(var) == 0:
+                erros += 1
+                erros_detalhes.append(f"Linha {idx+2}: Variável '{var_cod}' não encontrada")
+                progresso.progress((idx + 1) / len(df))
+                continue
+
+            data_val = row.get("data", "")
+            if pd.isna(data_val) or str(data_val).strip() == "":
+                data_val = datetime.now().strftime("%Y-%m-%d")
+            else:
+                data_val = str(data_val).strip()
+
+            estadio_val = row.get("estadio", "")
+            if pd.isna(estadio_val):
+                estadio_val = ""
+            else:
+                estadio_val = str(estadio_val).strip()
+
+            execute_query(
+                """INSERT INTO medicoes 
+                   (parcela_id, variavel_id, valor, data_medicao, estadio_fenologico) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (parc.iloc[0]["id"], var.iloc[0]["id"], valor, data_val, estadio_val)
+            )
+            count += 1
+
+        except Exception as e:
+            erros += 1
+            erros_detalhes.append(f"Linha {idx+2}: {str(e)[:100]}")
+
+        progresso.progress((idx + 1) / len(df))
+
+    return count, erros, erros_detalhes
+
 if __name__ == "__main__":
     main()
