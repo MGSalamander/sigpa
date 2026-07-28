@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 import io
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
 DB_NAME = "sigpa.db"
 
