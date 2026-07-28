@@ -792,34 +792,73 @@ def tela_analises():
                     st.success("✅ Dados seguem distribuição normal (p > 0.05)")
                 else:
                     st.warning("⚠️ Dados NÃO seguem distribuição normal (p < 0.05)")
+                
                 from scipy.stats import f_oneway
                 grupos = [group["valor"].values for name, group in df_dados.groupby("tratamento")]
                 f_stat, f_p = f_oneway(*grupos)
                 st.write("**2. ANOVA**")
                 st.write(f"Estatística F: {f_stat:.4f}")
                 st.write(f"p-valor: {f_p:.6f}")
+                
                 if f_p < 0.05:
                     st.success("✅ Diferença significativa entre tratamentos (p < 0.05)")
                     st.write("**3. Teste de Tukey (Comparação Múltipla)**")
                     tukey = pairwise_tukeyhsd(df_dados["valor"], df_dados["tratamento"], alpha=0.05)
-                    tukey_df = pd.DataFrame(data=tukey.summary().data[1:], columns=tukey.summary().data[0])
+                    tukey_data = tukey.summary().data
+                    tukey_df = pd.DataFrame(data=tukey_data[1:], columns=tukey_data[0])
                     st.dataframe(tukey_df, use_container_width=True)
-                    st.write("**4. Letras de Significância**")
+                    
+                    st.write("**4. Letras de Significância (Tukey)**")
+                    
+                    # ALGORITMO CORRIGIDO PARA LETRAS SOBREPOSTAS (a, ab, b, bc, c)
                     medias = df_dados.groupby("tratamento")["valor"].mean().sort_values(ascending=False)
-                    letras = {}
-                    letra_atual = 'a'
-                    for i, (trat, media) in enumerate(medias.items()):
-                        letras[trat] = letra_atual
-                        if i < len(medias) - 1:
-                            next_trat = medias.index[i + 1]
-                            for row in tukey.summary().data[1:]:
-                                if (row[0] == trat and row[1] == next_trat) or (row[0] == next_trat and row[1] == trat):
-                                    if row[4] < 0.05:
-                                        letra_atual = chr(ord(letra_atual) + 1)
-                                    break
-                    letras_df = pd.DataFrame(list(letras.items()), columns=["Tratamento", "Letra"])
-                    letras_df["Média"] = medias.values
+                    tratamentos_sorted = list(medias.index)
+                    
+                    def diferem(t1, t2):
+                        if t1 == t2: return False
+                        mask = ((tukey_df['group1'] == t1) & (tukey_df['group2'] == t2)) | \
+                               ((tukey_df['group1'] == t2) & (tukey_df['group2'] == t1))
+                        return tukey_df.loc[mask, 'reject'].values[0]
+
+                    grupos_letras = []
+                    for i in range(len(tratamentos_sorted)):
+                        g_atual = [tratamentos_sorted[i]]
+                        for j in range(i + 1, len(tratamentos_sorted)):
+                            cand = tratamentos_sorted[j]
+                            # Só agrupa se não diferir de NENHUM membro que já está no grupo
+                            if all(not diferem(cand, m) for m in g_atual):
+                                g_atual.append(cand)
+                        grupos_letras.append(set(g_atual))
+
+                    # Remove subconjuntos redundantes
+                    grupos_finais = []
+                    for i, g1 in enumerate(grupos_letras):
+                        is_subset = False
+                        for j, g2 in enumerate(grupos_letras):
+                            if i != j and g1.issubset(g2):
+                                is_subset = True
+                                break
+                        if not is_subset and g1 not in grupos_finais:
+                            grupos_finais.append(g1)
+                    
+                    # Ordenar pela média dos integrantes
+                    grupos_finais.sort(key=lambda g: sorted([tratamentos_sorted.index(t) for t in g]))
+
+                    # Atribuição das Letras concatenadas
+                    letras_dict = {t: "" for t in tratamentos_sorted}
+                    letra_ascii = 97 # Inicia na letra 'a'
+                    for g in grupos_finais:
+                        letra = chr(letra_ascii)
+                        for t in g:
+                            letras_dict[t] += letra
+                        letra_ascii += 1
+
+                    letras_df = pd.DataFrame([
+                        {"Tratamento": t, "Média": medias[t], "Letra": letras_dict[t]}
+                        for t in tratamentos_sorted
+                    ])
                     st.dataframe(letras_df, use_container_width=True)
+                    
                     fig_tukey = px.bar(letras_df, x="Tratamento", y="Média", text="Letra",
                                        title=f"{var_nome} - Médias com Letras de Tukey", color="Tratamento")
                     fig_tukey.update_traces(textposition="outside")
@@ -1135,22 +1174,51 @@ def tela_relatorios():
                                 elementos.append(tukey_table)
                                 elementos.append(Spacer(1, 6))
 
-                                # Letras
+                                # ALGORITMO CORRIGIDO NO RELATÓRIO PARA LETRAS SOBREPOSTAS
                                 medias_sort = df_var.groupby("tratamento")["valor"].mean().sort_values(ascending=False)
-                                letras = {}
-                                letra_atual = 'a'
-                                for i, (trat, _) in enumerate(medias_sort.items()):
-                                    letras[trat] = letra_atual
-                                    if i < len(medias_sort) - 1:
-                                        next_trat = medias_sort.index[i + 1]
-                                        for row in tukey.summary().data[1:]:
-                                            if (row[0] == trat and row[1] == next_trat) or (row[0] == next_trat and row[1] == trat):
-                                                if row[4] < 0.05:
-                                                    letra_atual = chr(ord(letra_atual) + 1)
-                                                break
+                                tratamentos_sorted = list(medias_sort.index)
+                                
+                                tukey_res_df = pd.DataFrame(data=tukey.summary().data[1:], columns=tukey.summary().data[0])
+                                
+                                def diferem_relatorio(t1, t2):
+                                    if t1 == t2: return False
+                                    mask = ((tukey_res_df['group1'] == t1) & (tukey_res_df['group2'] == t2)) | \
+                                           ((tukey_res_df['group1'] == t2) & (tukey_res_df['group2'] == t1))
+                                    return tukey_res_df.loc[mask, 'reject'].values[0]
+
+                                grupos_letras = []
+                                for i in range(len(tratamentos_sorted)):
+                                    g_atual = [tratamentos_sorted[i]]
+                                    for j in range(i + 1, len(tratamentos_sorted)):
+                                        cand = tratamentos_sorted[j]
+                                        if all(not diferem_relatorio(cand, m) for m in g_atual):
+                                            g_atual.append(cand)
+                                    grupos_letras.append(set(g_atual))
+
+                                grupos_finais = []
+                                for i, g1 in enumerate(grupos_letras):
+                                    is_subset = False
+                                    for j, g2 in enumerate(grupos_letras):
+                                        if i != j and g1.issubset(g2):
+                                            is_subset = True
+                                            break
+                                    if not is_subset and g1 not in grupos_finais:
+                                        grupos_finais.append(g1)
+                                
+                                grupos_finais.sort(key=lambda g: sorted([tratamentos_sorted.index(t) for t in g]))
+
+                                letras_dict_rel = {t: "" for t in tratamentos_sorted}
+                                letra_ascii = 97
+                                for g in grupos_finais:
+                                    letra = chr(letra_ascii)
+                                    for t in g:
+                                        letras_dict_rel[t] += letra
+                                    letra_ascii += 1
+                                    
                                 letras_data = [["Tratamento", "Média", "Letra"]]
                                 for trat, media in medias_sort.items():
-                                    letras_data.append([trat, f"{media:.2f}", letras[trat]])
+                                    letras_data.append([trat, f"{media:.2f}", letras_dict_rel[trat]])
+                                
                                 letras_table = Table(letras_data, colWidths=[largura*0.3, largura*0.3, largura*0.15])
                                 letras_table.setStyle(TableStyle([
                                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2E7D32")),
@@ -1167,13 +1235,13 @@ def tela_relatorios():
                                 elementos.append(Spacer(1, 4))
                                 elementos.append(Paragraph("<i>Médias com mesma letra não diferem (Tukey 5%).</i>", styles['Normal']))
 
-                                # Gráfico com letras
+                                # Gráfico com letras no Relatório
                                 if incluir_graficos:
                                     plt.close('all')
                                     fig, ax = plt.subplots(figsize=(8, 4.5))
                                     medias_letras = medias_sort.reset_index()
                                     medias_letras.columns = ['tratamento', 'media']
-                                    medias_letras['letra'] = medias_letras['tratamento'].map(letras)
+                                    medias_letras['letra'] = medias_letras['tratamento'].map(letras_dict_rel)
                                     bars = ax.bar(range(len(medias_letras)), medias_letras['media'],
                                                  color=[cores[i % len(cores)] for i in range(len(medias_letras))],
                                                  edgecolor='white', linewidth=1.2)
@@ -1267,7 +1335,6 @@ def tela_relatorios():
         """, (projeto_id,))
         csv = dados.to_csv(index=False).encode("utf-8")
         st.download_button(label="📥 Baixar CSV", data=csv, file_name=f"dados_{projeto['titulo'][:30]}.csv", mime="text/csv")
-
 def tela_compartilhar():
     st.title("👥 Compartilhar Projetos")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
