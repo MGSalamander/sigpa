@@ -518,7 +518,7 @@ def tela_medicoes():
         # Abas internas: Upload de arquivo OU colar CSV
         sub_tab1, sub_tab2 = st.tabs(["📤 Upload de Arquivo", "📋 Colar CSV direto"])
         
-                with sub_tab1:
+        with sub_tab1:
             col_modo, _ = st.columns([1, 3])
             with col_modo:
                 modo_import = st.radio("Modo de importação", [
@@ -548,7 +548,7 @@ def tela_medicoes():
                     import traceback
                     st.error(traceback.format_exc())
         
-                with sub_tab2:
+        with sub_tab2:
             st.markdown("**Cole os dados CSV diretamente aqui:**")
             st.markdown("Use **ponto** (.) como separador decimal ou **vírgula** (,) — ambos funcionam.")
             
