@@ -3,7 +3,6 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 from statsmodels.formula.api import ols
@@ -740,18 +739,17 @@ def tela_relatorios():
         return
     projeto_id = st.selectbox("Selecione o Projeto", projetos["id"].values, format_func=lambda x: projetos[projetos["id"]==x]["titulo"].values[0], key="sel_rel_proj")
     
-    # Buscar projeto e verificar se existe
+    # Buscar projeto
     df_proj = query_to_df("SELECT * FROM projetos WHERE id = ?", (projeto_id,))
     if len(df_proj) == 0:
         st.error("Projeto não encontrado!")
         return
     projeto = df_proj.iloc[0]
     
-    # Buscar empresa - tratar caso não exista
+    # Buscar empresa - tratamento seguro caso não exista
     df_emp = query_to_df("SELECT * FROM empresas WHERE id = ?", (projeto["empresa_id"],))
     if len(df_emp) > 0:
-        empresa = df_emp.iloc[0]
-        empresa_nome = empresa["nome"]
+        empresa_nome = df_emp.iloc[0]["nome"]
     else:
         empresa_nome = "** Empresa não encontrada **"
     
