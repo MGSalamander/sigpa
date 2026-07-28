@@ -9,6 +9,9 @@ from statsmodels.stats.anova import anova_lm
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import plotly.express as px
 import plotly.graph_objects as go
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import io
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
@@ -129,7 +132,6 @@ def tela_dashboard():
 def tela_empresas():
     st.title("🏢 Gerenciar Empresas")
     tab1, tab2 = st.tabs(["📋 Empresas Cadastradas", "➕ Nova Empresa"])
-    
     with tab1:
         empresas = query_to_df("SELECT * FROM empresas ORDER BY nome")
         if len(empresas) > 0:
@@ -137,8 +139,6 @@ def tela_empresas():
                 col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
                 col1.write(f"**{emp['nome']}**")
                 col2.write(f"📧 {emp.get('email', '—')}")
-                
-                # Botão Editar
                 if col3.button("✏️ Editar", key=f"edit_emp_{emp['id']}"):
                     st.session_state.edit_empresa_id = emp['id']
                     st.session_state.edit_empresa_nome = emp['nome']
@@ -147,15 +147,10 @@ def tela_empresas():
                     st.session_state.edit_empresa_email = emp.get('email', '')
                     st.session_state.edit_empresa_telefone = emp.get('telefone', '')
                     st.rerun()
-                
-                # Botão Excluir
                 if col4.button("🗑️", key=f"del_emp_{emp['id']}"):
                     execute_query("DELETE FROM empresas WHERE id = ?", (emp['id'],))
                     st.rerun()
-                
                 st.markdown("---")
-            
-            # Modal de edição
             if 'edit_empresa_id' in st.session_state:
                 with st.expander("✏️ Editando Empresa", expanded=True):
                     with st.form("editar_empresa"):
@@ -164,7 +159,6 @@ def tela_empresas():
                         contato = st.text_input("Contato", value=st.session_state.edit_empresa_contato)
                         email = st.text_input("E-mail", value=st.session_state.edit_empresa_email)
                         telefone = st.text_input("Telefone", value=st.session_state.edit_empresa_telefone)
-                        
                         col_a, col_b = st.columns(2)
                         if col_a.form_submit_button("💾 Salvar"):
                             execute_query(
@@ -178,7 +172,6 @@ def tela_empresas():
                             st.rerun()
         else:
             st.info("Nenhuma empresa cadastrada.")
-    
     with tab2:
         with st.form("nova_empresa"):
             nome = st.text_input("Nome da Empresa*")
@@ -200,7 +193,6 @@ def tela_empresas():
 def tela_projetos():
     st.title("📋 Gerenciar Projetos")
     tab1, tab2 = st.tabs(["📋 Projetos", "➕ Novo Projeto"])
-    
     with tab1:
         projetos = query_to_df("""
             SELECT p.*, e.nome as empresa_nome
@@ -208,7 +200,6 @@ def tela_projetos():
             JOIN empresas e ON p.empresa_id = e.id
             ORDER BY p.criado_em DESC
         """)
-        
         if len(projetos) > 0:
             for _, proj in projetos.iterrows():
                 col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
@@ -216,7 +207,6 @@ def tela_projetos():
                 col2.write(f"🏢 {proj['empresa_nome']}")
                 status_emoji = {"planejamento": "📝", "conducao": "🌱", "analise": "📊", "concluido": "✅"}
                 col3.write(f"{status_emoji.get(proj['status'], '📋')} {proj['status']}")
-                
                 if col4.button("✏️ Editar", key=f"edit_proj_{proj['id']}"):
                     st.session_state.edit_projeto_id = proj['id']
                     for campo in ['titulo', 'objetivo', 'tipo_pesquisa', 'cultura', 'local', 'municipio', 'estado', 'safra', 'responsavel', 'empresa_id']:
@@ -224,7 +214,6 @@ def tela_projetos():
                     st.session_state.edit_proj_data_plantio = proj.get('data_plantio', datetime.now())
                     st.session_state.edit_proj_data_colheita = proj.get('data_colheita', datetime.now())
                     st.rerun()
-                
                 if col5.button("🗑️", key=f"del_proj_{proj['id']}"):
                     execute_query("DELETE FROM medicoes WHERE parcela_id IN (SELECT id FROM parcelas WHERE projeto_id = ?)", (proj['id'],))
                     execute_query("DELETE FROM parcelas WHERE projeto_id = ?", (proj['id'],))
@@ -233,10 +222,7 @@ def tela_projetos():
                     execute_query("DELETE FROM permissoes WHERE projeto_id = ?", (proj['id'],))
                     execute_query("DELETE FROM projetos WHERE id = ?", (proj['id'],))
                     st.rerun()
-                
                 st.markdown("---")
-            
-            # Modal de edição
             if 'edit_projeto_id' in st.session_state:
                 with st.expander("✏️ Editando Projeto", expanded=True):
                     with st.form("editar_projeto"):
@@ -254,7 +240,6 @@ def tela_projetos():
                         estado = st.text_input("Estado", value=st.session_state.edit_proj_estado)
                         safra = st.text_input("Safra", value=st.session_state.edit_proj_safra)
                         responsavel = st.text_input("Responsável", value=st.session_state.edit_proj_responsavel)
-                        
                         col_a, col_b = st.columns(2)
                         if col_a.form_submit_button("💾 Salvar"):
                             execute_query("""
@@ -267,7 +252,6 @@ def tela_projetos():
                             st.rerun()
         else:
             st.info("Nenhum projeto cadastrado.")
-    
     with tab2:
         with st.form("novo_projeto"):
             empresas = query_to_df("SELECT id, nome FROM empresas ORDER BY nome")
@@ -303,9 +287,7 @@ def tela_tratamentos():
         return
     projeto_id = st.selectbox("Selecione o Projeto", projetos["id"].values, format_func=lambda x: projetos[projetos["id"]==x]["titulo"].values[0], key="sel_trat_proj")
     st.markdown("---")
-    
     tab1, tab2 = st.tabs(["📋 Tratamentos", "➕ Novo Tratamento"])
-    
     with tab1:
         tratamentos = query_to_df("SELECT * FROM tratamentos WHERE projeto_id = ? ORDER BY codigo", (projeto_id,))
         if len(tratamentos) > 0:
@@ -313,21 +295,16 @@ def tela_tratamentos():
                 col1, col2, col3, col4 = st.columns([1, 3, 1, 1])
                 col1.write(f"**{trat['codigo']}**")
                 col2.write(trat['nome'])
-                
                 if col3.button("✏️", key=f"edit_trat_{trat['id']}"):
                     st.session_state.edit_tratamento_id = trat['id']
                     st.session_state.edit_trat_codigo = trat['codigo']
                     st.session_state.edit_trat_nome = trat['nome']
                     st.session_state.edit_trat_descricao = trat.get('descricao', '')
                     st.rerun()
-                
                 if col4.button("🗑️", key=f"del_trat_{trat['id']}"):
                     execute_query("DELETE FROM tratamentos WHERE id = ?", (trat['id'],))
                     st.rerun()
-                
                 st.markdown("---")
-            
-            # Modal de edição
             if 'edit_tratamento_id' in st.session_state:
                 with st.expander("✏️ Editando Tratamento", expanded=True):
                     with st.form("editar_tratamento"):
@@ -347,7 +324,6 @@ def tela_tratamentos():
                             st.rerun()
         else:
             st.info("Nenhum tratamento cadastrado.")
-    
     with tab2:
         with st.form("novo_tratamento"):
             codigo = st.text_input("Código (ex: T1, T2, C1)")
@@ -370,7 +346,6 @@ def tela_parcelas():
         return
     projeto_id = st.selectbox("Selecione o Projeto", projetos["id"].values, format_func=lambda x: projetos[projetos["id"]==x]["titulo"].values[0], key="sel_parc_proj")
     st.markdown("---")
-    
     st.subheader("⚙️ Gerar Parcelas Automaticamente")
     tratamentos = query_to_df("SELECT * FROM tratamentos WHERE projeto_id = ?", (projeto_id,))
     if len(tratamentos) == 0:
@@ -395,7 +370,6 @@ def tela_parcelas():
                     count += 1
         st.success(f"{count} parcelas geradas!")
         st.rerun()
-    
     st.markdown("---")
     parcelas = query_to_df("""
         SELECT p.id, p.identificacao, t.codigo as tratamento, t.nome as trat_nome, p.bloco, p.repeticao
@@ -404,7 +378,6 @@ def tela_parcelas():
         WHERE p.projeto_id = ?
         ORDER BY p.bloco, p.repeticao, t.codigo
     """, (projeto_id,))
-    
     if len(parcelas) > 0:
         st.subheader(f"📋 Parcelas ({len(parcelas)} total)")
         for _, parc in parcelas.iterrows():
@@ -421,7 +394,6 @@ def tela_parcelas():
 def tela_variaveis():
     st.title("📏 Gerenciar Variáveis de Resposta")
     tab1, tab2 = st.tabs(["📋 Variáveis", "➕ Nova Variável"])
-    
     with tab1:
         variaveis = query_to_df("SELECT * FROM variaveis ORDER BY categoria, nome")
         if len(variaveis) > 0:
@@ -429,7 +401,6 @@ def tela_variaveis():
                 col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
                 col1.write(f"**{var['nome']}** ({var['codigo']})")
                 col2.write(f"📏 {var.get('unidade', '—')} | 🏷️ {var.get('categoria', '—')}")
-                
                 if col3.button("✏️", key=f"edit_var_{var['id']}"):
                     st.session_state.edit_variavel_id = var['id']
                     st.session_state.edit_var_nome = var['nome']
@@ -438,14 +409,10 @@ def tela_variaveis():
                     st.session_state.edit_var_unidade = var.get('unidade', '')
                     st.session_state.edit_var_metodo = var.get('metodo', '')
                     st.rerun()
-                
                 if col4.button("🗑️", key=f"del_var_{var['id']}"):
                     execute_query("DELETE FROM variaveis WHERE id = ?", (var['id'],))
                     st.rerun()
-                
                 st.markdown("---")
-            
-            # Modal de edição
             if 'edit_variavel_id' in st.session_state:
                 with st.expander("✏️ Editando Variável", expanded=True):
                     with st.form("editar_variavel"):
@@ -468,7 +435,6 @@ def tela_variaveis():
                             st.rerun()
         else:
             st.info("Nenhuma variável cadastrada.")
-    
     with tab2:
         with st.form("nova_variavel"):
             nome = st.text_input("Nome da Variável* (ex: Altura de Plantas)")
@@ -493,9 +459,7 @@ def tela_medicoes():
         return
     projeto_id = st.selectbox("Selecione o Projeto", projetos["id"].values, format_func=lambda x: projetos[projetos["id"]==x]["titulo"].values[0], key="sel_med_proj")
     st.markdown("---")
-    
     tab1, tab2, tab3 = st.tabs(["📝 Inserir Dados", "📤 Importar Planilha", "📋 Dados Coletados"])
-    
     with tab1:
         parcelas = query_to_df("""
             SELECT p.id, p.identificacao, t.codigo as tratamento
@@ -524,7 +488,6 @@ def tela_medicoes():
                 )
                 st.success("Medição salva!")
                 st.rerun()
-    
     with tab2:
         st.markdown("**Formato esperado da planilha (CSV ou Excel):**")
         st.code("parcela,variavel_codigo,valor,data,estadio\nB1R1T1,ALT_PLANT,85.2,2025-12-01,R2\nB1R1T1,PROD,4520,2025-12-01,R2")
@@ -561,7 +524,6 @@ def tela_medicoes():
                     st.rerun()
             except Exception as e:
                 st.error(f"Erro ao ler arquivo: {e}")
-    
     with tab3:
         st.subheader("📋 Dados Coletados")
         dados = query_to_df("""
@@ -573,7 +535,6 @@ def tela_medicoes():
             WHERE p.projeto_id = ?
             ORDER BY m.data_medicao DESC, p.identificacao
         """, (projeto_id,))
-        
         if len(dados) > 0:
             for _, med in dados.iterrows():
                 col1, col2, col3, col4, col5 = st.columns([2, 2, 1.5, 1, 1])
@@ -737,19 +698,15 @@ def tela_relatorios():
         st.warning("Crie um projeto primeiro!")
         return
     projeto_id = st.selectbox("Selecione o Projeto", projetos["id"].values, format_func=lambda x: projetos[projetos["id"]==x]["titulo"].values[0], key="sel_rel_proj")
-    
     df_proj = query_to_df("SELECT * FROM projetos WHERE id = ?", (projeto_id,))
     if len(df_proj) == 0:
         st.error("Projeto não encontrado!")
         return
     projeto = df_proj.iloc[0]
-    
     df_emp = query_to_df("SELECT * FROM empresas WHERE id = ?", (projeto["empresa_id"],))
     empresa_nome = df_emp.iloc[0]["nome"] if len(df_emp) > 0 else "—"
-    
     st.markdown("---")
     st.subheader("📄 Relatório do Projeto")
-    
     col1, col2 = st.columns(2)
     with col1:
         incluir_graficos = st.checkbox("Incluir gráficos", value=True, key="incluir_graficos")
@@ -757,14 +714,13 @@ def tela_relatorios():
     with col2:
         incluir_dados_brutos = st.checkbox("Incluir dados brutos", value=False, key="incluir_dados")
         incluir_recomendacoes = st.checkbox("Incluir campo de recomendações", value=True, key="incluir_recomendacoes")
-    
     recomendacoes = ""
     if incluir_recomendacoes:
         recomendacoes = st.text_area("Recomendações técnicas para o relatório", key="recomendacoes")
-    
     if st.button("📥 Gerar Relatório PDF Completo", use_container_width=True, type="primary"):
         with st.spinner("Gerando relatório completo com gráficos e análises..."):
             try:
+                plt.switch_backend('Agg')
                 buffer = io.BytesIO()
                 doc = SimpleDocTemplate(buffer, pagesize=A4,
                                         topMargin=2*28.35,
@@ -774,7 +730,6 @@ def tela_relatorios():
                 styles = getSampleStyleSheet()
                 c = 28.35
                 largura = A4[0] - 4*c
-                
                 elementos = []
                 
                 # ===== CAPA =====
@@ -793,16 +748,12 @@ def tela_relatorios():
                 # ===== 1. OBJETIVO =====
                 elementos.append(Paragraph("1. OBJETIVO", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
-                if projeto.get('objetivo'):
-                    elementos.append(Paragraph(projeto['objetivo'], styles['Normal']))
-                else:
-                    elementos.append(Paragraph("Não informado.", styles['Normal']))
+                elementos.append(Paragraph(projeto.get('objetivo', 'Não informado.'), styles['Normal']))
                 elementos.append(Spacer(1, 12))
                 
                 # ===== 2. MATERIAL E MÉTODOS =====
                 elementos.append(Paragraph("2. MATERIAL E MÉTODOS", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
-                
                 info_data = [
                     ["Item", "Descrição"],
                     ["Cultura", projeto.get('cultura', '—')],
@@ -864,9 +815,7 @@ def tela_relatorios():
                 else:
                     for idx, (_, var) in enumerate(variaveis.iterrows()):
                         var_nome = var['nome']
-                        var_cod = var['codigo']
                         var_unid = var['unidade']
-                        
                         elementos.append(Paragraph(f"3.{idx+1} {var_nome} ({var_unid})", styles['Heading2']))
                         elementos.append(Spacer(1, 6))
                         
@@ -881,15 +830,13 @@ def tela_relatorios():
                         if len(df_var) == 0:
                             continue
                         
-                        # --- Estatística descritiva ---
+                        # Estatística descritiva
                         elementos.append(Paragraph("<b>Estatística Descritiva:</b>", styles['Heading3']))
                         desc = df_var.groupby("tratamento")["valor"].agg(["mean", "std", "min", "max", "count"])
                         desc["cv"] = (desc["std"] / desc["mean"]) * 100
-                        
                         desc_data = [["Trat", "Média", "DP", "CV%", "Min", "Max", "N"]]
                         for trat, row in desc.iterrows():
                             desc_data.append([trat, f"{row['mean']:.2f}", f"{row['std']:.2f}", f"{row['cv']:.1f}", f"{row['min']:.2f}", f"{row['max']:.2f}", f"{int(row['count'])}"])
-                        
                         desc_table = Table(desc_data, colWidths=[largura*0.1, largura*0.15, largura*0.12, largura*0.1, largura*0.12, largura*0.12, largura*0.08])
                         desc_table.setStyle(TableStyle([
                             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1565C0")),
@@ -905,70 +852,83 @@ def tela_relatorios():
                         elementos.append(desc_table)
                         elementos.append(Spacer(1, 10))
                         
-                        # --- Gráfico de barras com Plotly ---
+                        # Gráfico de barras com matplotlib
                         if incluir_graficos:
-                            try:
-                                medias = df_var.groupby("tratamento")["valor"].mean().reset_index()
-                                stds = df_var.groupby("tratamento")["valor"].std().reset_index()
-                                medias['std'] = stds['valor']
-                                
-                                fig = px.bar(medias, x='tratamento', y='valor', error_y='std',
-                                             title=f'{var_nome} por Tratamento',
-                                             labels={'tratamento': 'Tratamento', 'valor': f'{var_nome} ({var_unid})'},
-                                             color='tratamento', color_discrete_sequence=px.colors.qualitative.Set2,
-                                             text_auto='.2f')
-                                fig.update_layout(showlegend=False, 
-                                                  template='simple_white',
-                                                  font=dict(size=10),
-                                                  title_font=dict(size=12))
-                                fig.update_traces(textposition='outside')
-                                
-                                img_bytes = fig.to_image(format='png', width=700, height=400, scale=2)
-                                img_buffer = io.BytesIO(img_bytes)
-                                img = Image(img_buffer, width=largura, height=largura*0.57)
-                                elementos.append(img)
-                                elementos.append(Spacer(1, 10))
-                            except Exception as e:
-                                elementos.append(Paragraph(f"<i>Gráfico não disponível: {str(e)[:50]}</i>", styles['Normal']))
+                            plt.close('all')
+                            fig, ax = plt.subplots(figsize=(8, 4.5))
+                            medias = df_var.groupby("tratamento")["valor"].agg(["mean", "std"]).reset_index()
+                            cores = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#C62828', '#00838F', '#F9A825', '#4E342E']
+                            bars = ax.bar(range(len(medias)), medias['mean'], yerr=medias['std'], capsize=5,
+                                         color=[cores[i % len(cores)] for i in range(len(medias))],
+                                         edgecolor='white', linewidth=1.2)
+                            for i, bar in enumerate(bars):
+                                height = bar.get_height()
+                                ax.text(bar.get_x() + bar.get_width()/2., height + height*0.02,
+                                        f'{medias["mean"].iloc[i]:.2f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
+                            ax.set_xticks(range(len(medias)))
+                            ax.set_xticklabels(medias['tratamento'], fontsize=9)
+                            ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
+                            ax.set_title(f'{var_nome} por Tratamento', fontsize=12, fontweight='bold')
+                            ax.spines['top'].set_visible(False)
+                            ax.spines['right'].set_visible(False)
+                            ax.grid(axis='y', alpha=0.3)
+                            plt.tight_layout()
+                            img_buffer = io.BytesIO()
+                            fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+                            img_buffer.seek(0)
+                            plt.close(fig)
+                            img = Image(img_buffer, width=largura, height=largura*0.56)
+                            elementos.append(img)
+                            elementos.append(Spacer(1, 10))
                         
-                        # --- Boxplot com Plotly ---
+                        # Boxplot com matplotlib
                         if incluir_graficos:
-                            try:
-                                fig_box = px.box(df_var, x='tratamento', y='valor',
-                                                 title=f'Boxplot - {var_nome}',
-                                                 labels={'tratamento': 'Tratamento', 'valor': f'{var_nome} ({var_unid})'},
-                                                 color='tratamento', color_discrete_sequence=px.colors.qualitative.Set2)
-                                fig_box.update_layout(showlegend=False, template='simple_white',
-                                                      font=dict(size=10), title_font=dict(size=12))
-                                
-                                img_bytes2 = fig_box.to_image(format='png', width=700, height=380, scale=2)
-                                img_buffer2 = io.BytesIO(img_bytes2)
-                                img2 = Image(img_buffer2, width=largura, height=largura*0.54)
-                                elementos.append(img2)
-                                elementos.append(Spacer(1, 10))
-                            except:
-                                pass
+                            plt.close('all')
+                            fig, ax = plt.subplots(figsize=(8, 4))
+                            tratamentos_lista = df_var['tratamento'].unique()
+                            dados_box = [df_var[df_var['tratamento'] == t]['valor'].values for t in tratamentos_lista]
+                            bp = ax.boxplot(dados_box, labels=tratamentos_lista, patch_artist=True,
+                                           medianprops={'color': 'black', 'linewidth': 2})
+                            for patch, color in zip(bp['boxes'], cores[:len(tratamentos_lista)]):
+                                patch.set_facecolor(color)
+                                patch.set_alpha(0.6)
+                            ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
+                            ax.set_title(f'Boxplot - {var_nome}', fontsize=12, fontweight='bold')
+                            ax.spines['top'].set_visible(False)
+                            ax.spines['right'].set_visible(False)
+                            ax.grid(axis='y', alpha=0.3)
+                            plt.tight_layout()
+                            img_buffer2 = io.BytesIO()
+                            fig.savefig(img_buffer2, format='png', dpi=150, bbox_inches='tight')
+                            img_buffer2.seek(0)
+                            plt.close(fig)
+                            img2 = Image(img_buffer2, width=largura, height=largura*0.5)
+                            elementos.append(img2)
+                            elementos.append(Spacer(1, 10))
                         
-                        # --- ANOVA ---
+                        # ANOVA
                         if incluir_anova and len(df_var) >= 6:
                             elementos.append(Paragraph("<b>Análise de Variância (ANOVA):</b>", styles['Heading3']))
-                            
                             from scipy.stats import f_oneway, shapiro
-                            from statsmodels.stats.multicomp import pairwise_tukeyhsd
-                            
                             grupos = [g["valor"].values for _, g in df_var.groupby("tratamento")]
-                            
                             residuos = df_var.groupby("tratamento")["valor"].apply(lambda x: x - x.mean())
                             _, shapiro_p = shapiro(residuos)
                             f_stat, f_p = f_oneway(*grupos)
-                            
+                            media_geral = df_var['valor'].mean()
+                            sq_trat = sum(len(g) * (g.mean() - media_geral)**2 for g in grupos)
+                            gl_trat = len(grupos) - 1
+                            qm_trat = sq_trat / gl_trat if gl_trat > 0 else 0
+                            sq_total = sum((v - media_geral)**2 for v in df_var['valor'])
+                            gl_total = len(df_var) - 1
+                            sq_res = sq_total - sq_trat
+                            gl_res = gl_total - gl_trat
+                            qm_res = sq_res / gl_res if gl_res > 0 else 0
                             anova_data = [
                                 ["Fonte", "SQ", "GL", "QM", "F", "p-valor"],
-                                ["Tratamentos", f"{sum(len(g)*(g.mean()-df_var['valor'].mean())**2 for g in grupos):.2f}", f"{len(grupos)-1}", "...", f"{f_stat:.4f}", f"{f_p:.6f}"],
-                                ["Resíduo", "...", f"{len(df_var)-len(grupos)}", "...", "", ""],
-                                ["Total", "...", f"{len(df_var)-1}", "", "", ""]
+                                ["Tratamentos", f"{sq_trat:.2f}", f"{gl_trat}", f"{qm_trat:.2f}", f"{f_stat:.4f}", f"{f_p:.6f}"],
+                                ["Resíduo", f"{sq_res:.2f}", f"{gl_res}", f"{qm_res:.2f}", "", ""],
+                                ["Total", f"{sq_total:.2f}", f"{gl_total}", "", "", ""]
                             ]
-                            
                             anova_table = Table(anova_data, colWidths=[largura*0.2, largura*0.16, largura*0.1, largura*0.16, largura*0.16, largura*0.16])
                             anova_table.setStyle(TableStyle([
                                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#E65100")),
@@ -982,23 +942,17 @@ def tela_relatorios():
                             ]))
                             elementos.append(anova_table)
                             elementos.append(Spacer(1, 6))
-                            
                             elementos.append(Paragraph(f"<b>Normalidade (Shapiro-Wilk):</b> p = {shapiro_p:.4f} {'✅ Normal' if shapiro_p > 0.05 else '⚠️ Não normal'}", styles['Normal']))
                             elementos.append(Spacer(1, 4))
-                            
                             if f_p < 0.05:
                                 elementos.append(Paragraph(f"<b>Resultado ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Diferença significativa</b> (p &lt; 0,05) ✅", styles['Normal']))
                                 elementos.append(Spacer(1, 6))
-                                
                                 elementos.append(Paragraph("<b>Teste de Tukey:</b>", styles['Heading3']))
-                                
                                 tukey = pairwise_tukeyhsd(df_var["valor"], df_var["tratamento"], alpha=0.05)
-                                
                                 tukey_data = [["Grupo 1", "Grupo 2", "Diferença", "p-valor", "Signif."]]
                                 for row in tukey.summary().data[1:]:
                                     sig = "✅" if row[4] < 0.05 else "❌"
                                     tukey_data.append([str(row[0]), str(row[1]), f"{row[2]:.4f}", f"{row[4]:.4f}", sig])
-                                
                                 tukey_table = Table(tukey_data, colWidths=[largura*0.2, largura*0.2, largura*0.2, largura*0.2, largura*0.1])
                                 tukey_table.setStyle(TableStyle([
                                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#6A1B9A")),
@@ -1027,11 +981,9 @@ def tela_relatorios():
                                                 if row[4] < 0.05:
                                                     letra_atual = chr(ord(letra_atual) + 1)
                                                 break
-                                
                                 letras_data = [["Tratamento", "Média", "Letra"]]
                                 for trat, media in medias_sort.items():
                                     letras_data.append([trat, f"{media:.2f}", letras[trat]])
-                                
                                 letras_table = Table(letras_data, colWidths=[largura*0.3, largura*0.3, largura*0.15])
                                 letras_table.setStyle(TableStyle([
                                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2E7D32")),
@@ -1048,31 +1000,36 @@ def tela_relatorios():
                                 elementos.append(Spacer(1, 4))
                                 elementos.append(Paragraph("<i>Médias com mesma letra não diferem (Tukey 5%).</i>", styles['Normal']))
                                 
-                                # Gráfico com letras usando Plotly
+                                # Gráfico com letras usando matplotlib
                                 if incluir_graficos:
-                                    try:
-                                        medias_letras = medias_sort.reset_index()
-                                        medias_letras.columns = ['tratamento', 'media']
-                                        medias_letras['letra'] = medias_letras['tratamento'].map(letras)
-                                        medias_letras['label'] = medias_letras['media'].round(2).astype(str) + medias_letras['letra']
-                                        
-                                        fig_tk = px.bar(medias_letras, x='tratamento', y='media', text='label',
-                                                        title=f'{var_nome} - Médias com Letras de Tukey',
-                                                        labels={'tratamento': 'Tratamento', 'media': f'{var_nome} ({var_unid})'},
-                                                        color='tratamento', color_discrete_sequence=px.colors.qualitative.Set2)
-                                        fig_tk.update_layout(showlegend=False, template='simple_white',
-                                                             font=dict(size=10), title_font=dict(size=12))
-                                        fig_tk.update_traces(textposition='outside')
-                                        
-                                        img_bytes3 = fig_tk.to_image(format='png', width=700, height=400, scale=2)
-                                        img_buffer3 = io.BytesIO(img_bytes3)
-                                        img3 = Image(img_buffer3, width=largura, height=largura*0.57)
-                                        elementos.append(img3)
-                                    except:
-                                        pass
+                                    plt.close('all')
+                                    fig, ax = plt.subplots(figsize=(8, 4.5))
+                                    medias_letras = medias_sort.reset_index()
+                                    medias_letras.columns = ['tratamento', 'media']
+                                    medias_letras['letra'] = medias_letras['tratamento'].map(letras)
+                                    bars = ax.bar(range(len(medias_letras)), medias_letras['media'],
+                                                 color=[cores[i % len(cores)] for i in range(len(medias_letras))],
+                                                 edgecolor='white', linewidth=1.2)
+                                    for i, (_, row) in enumerate(medias_letras.iterrows()):
+                                        ax.text(i, row['media'] + row['media']*0.02,
+                                                f"{row['media']:.2f}{row['letra']}",
+                                                ha='center', va='bottom', fontsize=9, fontweight='bold')
+                                    ax.set_xticks(range(len(medias_letras)))
+                                    ax.set_xticklabels(medias_letras['tratamento'], fontsize=9)
+                                    ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
+                                    ax.set_title(f'{var_nome} - Médias com Letras de Tukey', fontsize=12, fontweight='bold')
+                                    ax.spines['top'].set_visible(False)
+                                    ax.spines['right'].set_visible(False)
+                                    ax.grid(axis='y', alpha=0.3)
+                                    plt.tight_layout()
+                                    img_buffer3 = io.BytesIO()
+                                    fig.savefig(img_buffer3, format='png', dpi=150, bbox_inches='tight')
+                                    img_buffer3.seek(0)
+                                    plt.close(fig)
+                                    img3 = Image(img_buffer3, width=largura, height=largura*0.56)
+                                    elementos.append(img3)
                             else:
                                 elementos.append(Paragraph(f"<b>Resultado ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Sem diferença significativa</b> (p &gt; 0,05)", styles['Normal']))
-                        
                         elementos.append(Spacer(1, 16))
                 
                 # ===== 4. RECOMENDAÇÕES =====
@@ -1087,7 +1044,6 @@ def tela_relatorios():
                     elementos.append(PageBreak())
                     elementos.append(Paragraph("ANEXO - DADOS BRUTOS", styles['Heading1']))
                     elementos.append(Spacer(1, 8))
-                    
                     dados_brutos = query_to_df("""
                         SELECT p.identificacao as parcela, t.codigo as tratamento, 
                                v.nome as variavel, v.unidade, m.valor, m.data_medicao
@@ -1098,12 +1054,10 @@ def tela_relatorios():
                         WHERE p.projeto_id = ?
                         ORDER BY p.identificacao, v.nome
                     """, (projeto_id,))
-                    
                     if len(dados_brutos) > 0:
                         brutos_data = [list(dados_brutos.columns)]
                         for _, row in dados_brutos.iterrows():
                             brutos_data.append([str(row[c]) for c in dados_brutos.columns])
-                        
                         brutos_table = Table(brutos_data, repeatRows=1)
                         brutos_table.setStyle(TableStyle([
                             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#37474F")),
@@ -1119,7 +1073,6 @@ def tela_relatorios():
                 
                 doc.build(elementos)
                 buffer.seek(0)
-                
                 st.success("✅ Relatório completo gerado com sucesso!")
                 st.download_button(
                     label="📥 Baixar Relatório PDF",
@@ -1128,7 +1081,6 @@ def tela_relatorios():
                     mime="application/pdf",
                     use_container_width=True
                 )
-                
             except Exception as e:
                 st.error(f"Erro ao gerar relatório: {e}")
                 import traceback
@@ -1149,6 +1101,7 @@ def tela_relatorios():
         """, (projeto_id,))
         csv = dados.to_csv(index=False).encode("utf-8")
         st.download_button(label="📥 Baixar CSV", data=csv, file_name=f"dados_{projeto['titulo'][:30]}.csv", mime="text/csv")
+
 def tela_compartilhar():
     st.title("👥 Compartilhar Projetos")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
