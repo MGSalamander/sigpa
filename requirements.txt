@@ -2,9 +2,8 @@ streamlit
 pandas
 numpy
 scipy
-matplotlib
-import
 statsmodels
 openpyxl
 reportlab
 plotly
+kaleido
