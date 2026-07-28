@@ -459,7 +459,9 @@ def tela_medicoes():
         return
     projeto_id = st.selectbox("Selecione o Projeto", projetos["id"].values, format_func=lambda x: projetos[projetos["id"]==x]["titulo"].values[0], key="sel_med_proj")
     st.markdown("---")
+    
     tab1, tab2, tab3 = st.tabs(["📝 Inserir Dados", "📤 Importar Planilha", "📋 Dados Coletados"])
+    
     with tab1:
         parcelas = query_to_df("""
             SELECT p.id, p.identificacao, t.codigo as tratamento
@@ -488,10 +490,19 @@ def tela_medicoes():
                 )
                 st.success("Medição salva!")
                 st.rerun()
+    
     with tab2:
         st.markdown("**Formato esperado da planilha (CSV ou Excel):**")
         st.code("parcela,variavel_codigo,valor,data,estadio\nB1R1T1,ALT_PLANT,85.2,2025-12-01,R2\nB1R1T1,PROD,4520,2025-12-01,R2")
-        arquivo = st.file_uploader("Escolha o arquivo", type=["csv", "xlsx"])
+        
+        col_modo, _ = st.columns([1, 3])
+        with col_modo:
+            modo_import = st.radio("Modo de importação", [
+                "📥 Adicionar aos existentes",
+                "🔄 Substituir tudo (apaga dados atuais e importa)"
+            ], key="modo_import")
+        
+        arquivo = st.file_uploader("Escolha o arquivo", type=["csv", "xlsx"], key="file_uploader_med")
         if arquivo is not None:
             try:
                 if arquivo.name.endswith(".csv"):
@@ -500,34 +511,128 @@ def tela_medicoes():
                     df = pd.read_excel(arquivo)
                 st.write("**Preview dos dados:**")
                 st.dataframe(df.head())
-                if st.button("📥 Importar Dados"):
+                
+                if st.button("📥 Importar Dados", type="primary"):
+                    substituir = "Substituir" in modo_import
+                    if substituir:
+                        st.warning("⚠️ Isso vai APAGAR todos os dados atuais deste projeto e importar os novos. Tem certeza?")
+                        confirmar = st.checkbox("Sim, quero substituir todos os dados", key="confirm_substituir")
+                        if not confirmar:
+                            st.info("Marque a caixa de confirmação para prosseguir.")
+                            st.stop()
+                    
                     count = 0
                     erros = 0
+                    
+                    if substituir:
+                        execute_query("""
+                            DELETE FROM medicoes WHERE parcela_id IN 
+                            (SELECT id FROM parcelas WHERE projeto_id = ?)
+                        """, (projeto_id,))
+                    
                     for _, row in df.iterrows():
                         try:
-                            parc = query_to_df("SELECT id FROM parcelas WHERE projeto_id = ? AND identificacao = ?", (projeto_id, row["parcela"]))
+                            parc = query_to_df("SELECT id FROM parcelas WHERE projeto_id = ? AND identificacao = ?", 
+                                               (projeto_id, str(row["parcela"]).strip()))
                             if len(parc) == 0:
                                 erros += 1
                                 continue
-                            var = query_to_df("SELECT id FROM variaveis WHERE codigo = ?", (row["variavel_codigo"],))
+                            var = query_to_df("SELECT id FROM variaveis WHERE codigo = ?", 
+                                              (str(row["variavel_codigo"]).strip(),))
                             if len(var) == 0:
                                 erros += 1
                                 continue
+                            
+                            data_val = row.get("data", datetime.now().strftime("%Y-%m-%d"))
+                            if pd.isna(data_val):
+                                data_val = datetime.now().strftime("%Y-%m-%d")
+                            
+                            estadio_val = row.get("estadio", "")
+                            if pd.isna(estadio_val):
+                                estadio_val = ""
+                            
                             execute_query(
                                 "INSERT INTO medicoes (parcela_id, variavel_id, valor, data_medicao, estadio_fenologico) VALUES (?, ?, ?, ?, ?)",
-                                (parc.iloc[0]["id"], var.iloc[0]["id"], row["valor"], row.get("data", datetime.now()), row.get("estadio", ""))
+                                (parc.iloc[0]["id"], var.iloc[0]["id"], float(row["valor"]), data_val, str(estadio_val))
                             )
                             count += 1
-                        except:
+                        except Exception as e:
                             erros += 1
-                    st.success(f"✅ {count} medições importadas! ❌ {erros} erros.")
+                    
+                    if substituir:
+                        st.success(f"✅ Dados substituídos! {count} medições importadas. ❌ {erros} erros.")
+                    else:
+                        st.success(f"✅ {count} medições importadas! ❌ {erros} erros.")
                     st.rerun()
             except Exception as e:
                 st.error(f"Erro ao ler arquivo: {e}")
+    
     with tab3:
         st.subheader("📋 Dados Coletados")
+        
+        # Botões de exportação
+        col_exp1, col_exp2, _ = st.columns([1.5, 1.5, 4])
+        with col_exp1:
+            if st.button("📥 Baixar CSV (para editar e reimportar)", use_container_width=True):
+                dados_export = query_to_df("""
+                    SELECT p.identificacao as parcela, v.codigo as variavel_codigo, 
+                           m.valor, m.data_medicao as data, m.estadio_fenologico as estadio
+                    FROM medicoes m
+                    JOIN parcelas p ON m.parcela_id = p.id
+                    JOIN variaveis v ON m.variavel_id = v.id
+                    WHERE p.projeto_id = ?
+                    ORDER BY p.identificacao, v.nome
+                """, (projeto_id,))
+                
+                if len(dados_export) > 0:
+                    csv = dados_export.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="📥 Baixar CSV",
+                        data=csv,
+                        file_name=f"dados_para_editar_projeto_{projeto_id}.csv",
+                        mime="text/csv",
+                        key="download_csv_editavel"
+                    )
+                else:
+                    st.info("Nenhum dado para exportar.")
+        
+        with col_exp2:
+            if st.button("📥 Baixar XLSX (Excel)", use_container_width=True):
+                dados_export = query_to_df("""
+                    SELECT p.identificacao as parcela, v.codigo as variavel_codigo, 
+                           m.valor, m.data_medicao as data, m.estadio_fenologico as estadio
+                    FROM medicoes m
+                    JOIN parcelas p ON m.parcela_id = p.id
+                    JOIN variaveis v ON m.variavel_id = v.id
+                    WHERE p.projeto_id = ?
+                    ORDER BY p.identificacao, v.nome
+                """, (projeto_id,))
+                
+                if len(dados_export) > 0:
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        dados_export.to_excel(writer, index=False, sheet_name='Dados')
+                    output.seek(0)
+                    st.download_button(
+                        label="📥 Baixar XLSX",
+                        data=output,
+                        file_name=f"dados_para_editar_projeto_{projeto_id}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_xlsx_editavel"
+                    )
+                else:
+                    st.info("Nenhum dado para exportar.")
+        
+        st.markdown("---")
+        st.markdown("**Instruções:** Baixe o CSV ou XLSX, edite no Excel, e faça upload na aba **Importar Planilha** usando o modo **Substituir tudo**.")
+        st.markdown("---")
+        
+        # Listagem com edição
         dados = query_to_df("""
-            SELECT m.id, p.identificacao as parcela, t.codigo as tratamento, v.nome as variavel, v.unidade, m.valor, m.data_medicao, m.estadio_fenologico
+            SELECT m.id, p.identificacao as parcela, t.codigo as tratamento, 
+                   v.nome as variavel, v.codigo as var_codigo, v.unidade, 
+                   m.valor, m.data_medicao, m.estadio_fenologico,
+                   m.parcela_id, m.variavel_id
             FROM medicoes m
             JOIN parcelas p ON m.parcela_id = p.id
             JOIN tratamentos t ON p.tratamento_id = t.id
@@ -535,20 +640,74 @@ def tela_medicoes():
             WHERE p.projeto_id = ?
             ORDER BY m.data_medicao DESC, p.identificacao
         """, (projeto_id,))
+        
         if len(dados) > 0:
+            st.write(f"**Total:** {len(dados)} medições")
+            
             for _, med in dados.iterrows():
-                col1, col2, col3, col4, col5 = st.columns([2, 2, 1.5, 1, 1])
+                col1, col2, col3, col4, col5, col6, col7 = st.columns([1.5, 1.5, 1.2, 1, 1, 0.5, 0.5])
                 col1.write(f"**{med['parcela']}**")
                 col2.write(f"📏 {med['variavel']} ({med['unidade']})")
                 col3.write(f"**{med['valor']}**")
                 col4.write(f"📅 {med['data_medicao']}")
-                if col5.button("🗑️", key=f"del_med_{med['id']}"):
+                col5.write(f"🌿 {med['estadio_fenologico'] or '—'}")
+                
+                # Botão Editar
+                if col6.button("✏️", key=f"edit_med_{med['id']}"):
+                    st.session_state.edit_medicao_id = med['id']
+                    st.session_state.edit_med_parcela_id = med['parcela_id']
+                    st.session_state.edit_med_variavel_id = med['variavel_id']
+                    st.session_state.edit_med_valor = float(med['valor'])
+                    st.session_state.edit_med_data = med['data_medicao']
+                    st.session_state.edit_med_estadio = med['estadio_fenologico'] or ''
+                    st.rerun()
+                
+                # Botão Excluir
+                if col7.button("🗑️", key=f"del_med_{med['id']}"):
                     execute_query("DELETE FROM medicoes WHERE id = ?", (med['id'],))
                     st.rerun()
+                
                 st.markdown("---")
+            
+            # Modal de edição de medição
+            if 'edit_medicao_id' in st.session_state:
+                with st.expander("✏️ Editando Medição", expanded=True):
+                    with st.form("editar_medicao"):
+                        # Parcela (só leitura)
+                        parcelas_df = query_to_df("SELECT id, identificacao FROM parcelas WHERE projeto_id = ? ORDER BY identificacao", (projeto_id,))
+                        parcela_id = st.selectbox("Parcela", parcelas_df["id"].values, 
+                            format_func=lambda x: parcelas_df[parcelas_df["id"]==x]["identificacao"].values[0],
+                            index=parcelas_df[parcelas_df["id"]==st.session_state.edit_med_parcela_id].index[0] if st.session_state.edit_med_parcela_id in parcelas_df["id"].values else 0)
+                        
+                        # Variável
+                        vars_df = query_to_df("SELECT id, nome, codigo, unidade FROM variaveis ORDER BY nome")
+                        var_idx = 0
+                        if st.session_state.edit_med_variavel_id in vars_df["id"].values:
+                            var_idx = vars_df[vars_df["id"]==st.session_state.edit_med_variavel_id].index[0]
+                        variavel_id = st.selectbox("Variável", vars_df["id"].values,
+                            format_func=lambda x: f"{vars_df[vars_df['id']==x]['nome'].values[0]} ({vars_df[vars_df['id']==x]['unidade'].values[0]})",
+                            index=var_idx)
+                        
+                        valor = st.number_input("Valor", format="%.4f", value=st.session_state.edit_med_valor)
+                        data_med = st.date_input("Data", value=pd.to_datetime(st.session_state.edit_med_data).date())
+                        estadio = st.text_input("Estádio", value=st.session_state.edit_med_estadio)
+                        
+                        col_a, col_b = st.columns(2)
+                        if col_a.form_submit_button("💾 Salvar Alterações"):
+                            execute_query(
+                                "UPDATE medicoes SET parcela_id=?, variavel_id=?, valor=?, data_medicao=?, estadio_fenologico=? WHERE id=?",
+                                (parcela_id, variavel_id, valor, data_med, estadio, st.session_state.edit_medicao_id)
+                            )
+                            del st.session_state.edit_medicao_id
+                            st.success("Medição atualizada!")
+                            st.rerun()
+                        
+                        if col_b.form_submit_button("❌ Cancelar"):
+                            del st.session_state.edit_medicao_id
+                            st.rerun()
         else:
             st.info("Nenhum dado coletado ainda.")
-
+            
 def tela_analises():
     st.title("📊 Análises Estatísticas")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
