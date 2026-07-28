@@ -723,16 +723,14 @@ def tela_relatorios():
                 plt.switch_backend('Agg')
                 buffer = io.BytesIO()
                 doc = SimpleDocTemplate(buffer, pagesize=A4,
-                                        topMargin=2*28.35,
-                                        bottomMargin=2*28.35,
-                                        leftMargin=2*28.35,
-                                        rightMargin=2*28.35)
+                                        topMargin=2*28.35, bottomMargin=2*28.35,
+                                        leftMargin=2*28.35, rightMargin=2*28.35)
                 styles = getSampleStyleSheet()
                 c = 28.35
                 largura = A4[0] - 4*c
                 elementos = []
-                
-                # ===== CAPA =====
+
+                # CAPA
                 elementos.append(Spacer(1, 80))
                 elementos.append(Paragraph("RELATÓRIO TÉCNICO", styles['Title']))
                 elementos.append(Spacer(1, 20))
@@ -742,16 +740,16 @@ def tela_relatorios():
                 elementos.append(Paragraph(f"<b>Cultura:</b> {projeto.get('cultura', '—')} | <b>Safra:</b> {projeto.get('safra', '—')}", styles['Normal']))
                 elementos.append(Paragraph(f"<b>Local:</b> {projeto.get('local', '—')} - {projeto.get('municipio', '—')}/{projeto.get('estado', '—')}", styles['Normal']))
                 elementos.append(Paragraph(f"<b>Responsável:</b> {projeto.get('responsavel', '—')}", styles['Normal']))
-                elementos.append(Paragraph(f"<b>Data do relatório:</b> {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+                elementos.append(Paragraph(f"<b>Data:</b> {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
                 elementos.append(PageBreak())
-                
-                # ===== 1. OBJETIVO =====
+
+                # 1. OBJETIVO
                 elementos.append(Paragraph("1. OBJETIVO", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
                 elementos.append(Paragraph(projeto.get('objetivo', 'Não informado.'), styles['Normal']))
                 elementos.append(Spacer(1, 12))
-                
-                # ===== 2. MATERIAL E MÉTODOS =====
+
+                # 2. MATERIAL E MÉTODOS
                 elementos.append(Paragraph("2. MATERIAL E MÉTODOS", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
                 info_data = [
@@ -776,7 +774,7 @@ def tela_relatorios():
                 ]))
                 elementos.append(info_table)
                 elementos.append(Spacer(1, 12))
-                
+
                 tratamentos = query_to_df("SELECT * FROM tratamentos WHERE projeto_id = ?", (projeto_id,))
                 if len(tratamentos) > 0:
                     elementos.append(Paragraph("<b>Tratamentos Avaliados:</b>", styles['Heading2']))
@@ -797,11 +795,11 @@ def tela_relatorios():
                     ]))
                     elementos.append(trat_table)
                     elementos.append(Spacer(1, 12))
-                
-                # ===== 3. RESULTADOS =====
+
+                # 3. RESULTADOS
                 elementos.append(Paragraph("3. RESULTADOS", styles['Heading1']))
                 elementos.append(Spacer(1, 8))
-                
+
                 variaveis = query_to_df("""
                     SELECT DISTINCT v.id, v.nome, v.codigo, v.unidade
                     FROM medicoes m
@@ -809,16 +807,15 @@ def tela_relatorios():
                     JOIN parcelas p ON m.parcela_id = p.id
                     WHERE p.projeto_id = ?
                 """, (projeto_id,))
-                
+
                 if len(variaveis) == 0:
-                    elementos.append(Paragraph("Nenhum dado coletado para este projeto.", styles['Normal']))
+                    elementos.append(Paragraph("Nenhum dado coletado.", styles['Normal']))
                 else:
                     for idx, (_, var) in enumerate(variaveis.iterrows()):
-                        var_nome = var['nome']
-                        var_unid = var['unidade']
+                        var_nome, var_unid = var['nome'], var['unidade']
                         elementos.append(Paragraph(f"3.{idx+1} {var_nome} ({var_unid})", styles['Heading2']))
                         elementos.append(Spacer(1, 6))
-                        
+
                         df_var = query_to_df("""
                             SELECT m.valor, t.codigo as tratamento, t.nome as trat_nome, p.bloco, p.identificacao
                             FROM medicoes m
@@ -826,10 +823,9 @@ def tela_relatorios():
                             JOIN tratamentos t ON p.tratamento_id = t.id
                             WHERE p.projeto_id = ? AND m.variavel_id = ?
                         """, (projeto_id, var['id']))
-                        
                         if len(df_var) == 0:
                             continue
-                        
+
                         # Estatística descritiva
                         elementos.append(Paragraph("<b>Estatística Descritiva:</b>", styles['Heading3']))
                         desc = df_var.groupby("tratamento")["valor"].agg(["mean", "std", "min", "max", "count"])
@@ -851,19 +847,20 @@ def tela_relatorios():
                         ]))
                         elementos.append(desc_table)
                         elementos.append(Spacer(1, 10))
-                        
-                        # Gráfico de barras com matplotlib
+
+                        cores = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#C62828', '#00838F', '#F9A825', '#4E342E']
+
+                        # Gráfico de barras
                         if incluir_graficos:
                             plt.close('all')
                             fig, ax = plt.subplots(figsize=(8, 4.5))
                             medias = df_var.groupby("tratamento")["valor"].agg(["mean", "std"]).reset_index()
-                            cores = ['#2E7D32', '#1565C0', '#E65100', '#6A1B9A', '#C62828', '#00838F', '#F9A825', '#4E342E']
                             bars = ax.bar(range(len(medias)), medias['mean'], yerr=medias['std'], capsize=5,
                                          color=[cores[i % len(cores)] for i in range(len(medias))],
                                          edgecolor='white', linewidth=1.2)
                             for i, bar in enumerate(bars):
-                                height = bar.get_height()
-                                ax.text(bar.get_x() + bar.get_width()/2., height + height*0.02,
+                                h = bar.get_height()
+                                ax.text(bar.get_x() + bar.get_width()/2., h + h*0.02,
                                         f'{medias["mean"].iloc[i]:.2f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
                             ax.set_xticks(range(len(medias)))
                             ax.set_xticklabels(medias['tratamento'], fontsize=9)
@@ -873,39 +870,39 @@ def tela_relatorios():
                             ax.spines['right'].set_visible(False)
                             ax.grid(axis='y', alpha=0.3)
                             plt.tight_layout()
-                            img_buffer = io.BytesIO()
-                            fig.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
-                            img_buffer.seek(0)
+                            img_buf = io.BytesIO()
+                            fig.savefig(img_buf, format='png', dpi=150, bbox_inches='tight')
+                            img_buf.seek(0)
                             plt.close(fig)
-                            img = Image(img_buffer, width=largura, height=largura*0.56)
-                            elementos.append(img)
+                            elementos.append(Image(img_buf, width=largura, height=largura*0.56))
                             elementos.append(Spacer(1, 10))
-                        
-                        # Boxplot com matplotlib
+
+                        # Boxplot
                         if incluir_graficos:
                             plt.close('all')
                             fig, ax = plt.subplots(figsize=(8, 4))
-                            tratamentos_lista = df_var['tratamento'].unique()
-                            dados_box = [df_var[df_var['tratamento'] == t]['valor'].values for t in tratamentos_lista]
-                            bp = ax.boxplot(dados_box, labels=tratamentos_lista, patch_artist=True,
+                            trat_lista = list(df_var['tratamento'].unique())
+                            dados_box = [df_var[df_var['tratamento'] == t]['valor'].values for t in trat_lista]
+                            bp = ax.boxplot(dados_box, patch_artist=True,
                                            medianprops={'color': 'black', 'linewidth': 2})
-                            for patch, color in zip(bp['boxes'], cores[:len(tratamentos_lista)]):
+                            for patch, color in zip(bp['boxes'], cores[:len(trat_lista)]):
                                 patch.set_facecolor(color)
                                 patch.set_alpha(0.6)
+                            ax.set_xticks(range(1, len(trat_lista) + 1))
+                            ax.set_xticklabels(trat_lista, fontsize=9)
                             ax.set_ylabel(f'{var_nome} ({var_unid})', fontsize=10)
                             ax.set_title(f'Boxplot - {var_nome}', fontsize=12, fontweight='bold')
                             ax.spines['top'].set_visible(False)
                             ax.spines['right'].set_visible(False)
                             ax.grid(axis='y', alpha=0.3)
                             plt.tight_layout()
-                            img_buffer2 = io.BytesIO()
-                            fig.savefig(img_buffer2, format='png', dpi=150, bbox_inches='tight')
-                            img_buffer2.seek(0)
+                            img_buf2 = io.BytesIO()
+                            fig.savefig(img_buf2, format='png', dpi=150, bbox_inches='tight')
+                            img_buf2.seek(0)
                             plt.close(fig)
-                            img2 = Image(img_buffer2, width=largura, height=largura*0.5)
-                            elementos.append(img2)
+                            elementos.append(Image(img_buf2, width=largura, height=largura*0.5))
                             elementos.append(Spacer(1, 10))
-                        
+
                         # ANOVA
                         if incluir_anova and len(df_var) >= 6:
                             elementos.append(Paragraph("<b>Análise de Variância (ANOVA):</b>", styles['Heading3']))
@@ -967,8 +964,8 @@ def tela_relatorios():
                                 ]))
                                 elementos.append(tukey_table)
                                 elementos.append(Spacer(1, 6))
-                                
-                                # Letras de significância
+
+                                # Letras
                                 medias_sort = df_var.groupby("tratamento")["valor"].mean().sort_values(ascending=False)
                                 letras = {}
                                 letra_atual = 'a'
@@ -999,8 +996,8 @@ def tela_relatorios():
                                 elementos.append(letras_table)
                                 elementos.append(Spacer(1, 4))
                                 elementos.append(Paragraph("<i>Médias com mesma letra não diferem (Tukey 5%).</i>", styles['Normal']))
-                                
-                                # Gráfico com letras usando matplotlib
+
+                                # Gráfico com letras
                                 if incluir_graficos:
                                     plt.close('all')
                                     fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -1022,24 +1019,23 @@ def tela_relatorios():
                                     ax.spines['right'].set_visible(False)
                                     ax.grid(axis='y', alpha=0.3)
                                     plt.tight_layout()
-                                    img_buffer3 = io.BytesIO()
-                                    fig.savefig(img_buffer3, format='png', dpi=150, bbox_inches='tight')
-                                    img_buffer3.seek(0)
+                                    img_buf3 = io.BytesIO()
+                                    fig.savefig(img_buf3, format='png', dpi=150, bbox_inches='tight')
+                                    img_buf3.seek(0)
                                     plt.close(fig)
-                                    img3 = Image(img_buffer3, width=largura, height=largura*0.56)
-                                    elementos.append(img3)
+                                    elementos.append(Image(img_buf3, width=largura, height=largura*0.56))
                             else:
-                                elementos.append(Paragraph(f"<b>Resultado ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Sem diferença significativa</b> (p &gt; 0,05)", styles['Normal']))
+                                elementos.append(Paragraph(f"<b>Resultado ANOVA:</b> F = {f_stat:.4f}, p = {f_p:.6f} — <b>Sem diferença</b> (p &gt; 0,05)", styles['Normal']))
                         elementos.append(Spacer(1, 16))
-                
-                # ===== 4. RECOMENDAÇÕES =====
+
+                # 4. RECOMENDAÇÕES
                 if recomendacoes:
                     elementos.append(Paragraph("4. RECOMENDAÇÕES TÉCNICAS", styles['Heading1']))
                     elementos.append(Spacer(1, 8))
                     elementos.append(Paragraph(recomendacoes, styles['Normal']))
                     elementos.append(Spacer(1, 12))
-                
-                # ===== 5. DADOS BRUTOS =====
+
+                # 5. DADOS BRUTOS
                 if incluir_dados_brutos:
                     elementos.append(PageBreak())
                     elementos.append(Paragraph("ANEXO - DADOS BRUTOS", styles['Heading1']))
@@ -1070,7 +1066,7 @@ def tela_relatorios():
                             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
                         ]))
                         elementos.append(brutos_table)
-                
+
                 doc.build(elementos)
                 buffer.seek(0)
                 st.success("✅ Relatório completo gerado com sucesso!")
@@ -1085,7 +1081,7 @@ def tela_relatorios():
                 st.error(f"Erro ao gerar relatório: {e}")
                 import traceback
                 st.error(traceback.format_exc())
-    
+
     st.markdown("---")
     st.subheader("📤 Exportar Dados Brutos")
     if st.button("📥 Exportar CSV"):
@@ -1101,7 +1097,6 @@ def tela_relatorios():
         """, (projeto_id,))
         csv = dados.to_csv(index=False).encode("utf-8")
         st.download_button(label="📥 Baixar CSV", data=csv, file_name=f"dados_{projeto['titulo'][:30]}.csv", mime="text/csv")
-
 def tela_compartilhar():
     st.title("👥 Compartilhar Projetos")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
