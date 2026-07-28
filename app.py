@@ -518,7 +518,7 @@ def tela_medicoes():
         # Abas internas: Upload de arquivo OU colar CSV
         sub_tab1, sub_tab2 = st.tabs(["📤 Upload de Arquivo", "📋 Colar CSV direto"])
         
-        with sub_tab1:
+                with sub_tab1:
             col_modo, _ = st.columns([1, 3])
             with col_modo:
                 modo_import = st.radio("Modo de importação", [
@@ -537,20 +537,20 @@ def tela_medicoes():
                     
                     df.columns = [c.strip().lower() for c in df.columns]
                     
-                    st.write("**Preview dos dados:**")
+                    st.write("**Preview:**")
                     st.dataframe(df.head(10))
                     st.write(f"**Total de linhas:** {len(df)}")
                     
-                    processar_importacao(df, projeto_id, modo_import)
+                    processar_importacao(df, projeto_id, modo_import, prefixo="file")
                     
                 except Exception as e:
                     st.error(f"❌ Erro ao ler arquivo: {e}")
                     import traceback
                     st.error(traceback.format_exc())
         
-        with sub_tab2:
+                with sub_tab2:
             st.markdown("**Cole os dados CSV diretamente aqui:**")
-            st.markdown("Copie do Excel e cole. A primeira linha deve conter os nomes das colunas.")
+            st.markdown("Use **ponto** (.) como separador decimal ou **vírgula** (,) — ambos funcionam.")
             
             col_modo2, _ = st.columns([1, 3])
             with col_modo2:
@@ -562,7 +562,7 @@ def tela_medicoes():
             csv_texto = st.text_area(
                 "Cole o CSV aqui (parcela,variavel_codigo,valor,data,estadio)",
                 height=200,
-                placeholder="B1R1TT1,PMS,227.6,2026-06-28,R8\nB1R1TT1,PMS,228,2026-06-28,R8\nB1R1TT1,PMS,234.6,2026-06-28,R8\nB1R1TT1,SEMENTES,121,2026-06-28,R8\nB1R1TT1,SEMENTES,127,2026-06-28,R8",
+                placeholder="B1R1TT1,PMS,227.6,2026-06-28,R8\nB1R1TT1,PMS,228,2026-06-28,R8\nB1R1TT1,PMS,234.6,2026-06-28,R8",
                 key="csv_textarea"
             )
             
@@ -570,18 +570,18 @@ def tela_medicoes():
                 try:
                     from io import StringIO
                     df = pd.read_csv(StringIO(csv_texto))
-                    
                     df.columns = [c.strip().lower() for c in df.columns]
                     
-                    st.write("**Preview dos dados:**")
+                    st.write("**Preview:**")
                     st.dataframe(df.head(10))
                     st.write(f"**Total de linhas:** {len(df)}")
                     
-                    processar_importacao(df, projeto_id, modo_import2)
+                    processar_importacao(df, projeto_id, modo_import2, prefixo="csv")
                     
                 except Exception as e:
                     st.error(f"❌ Erro ao ler CSV: {e}")
-                    st.info("Verifique se o formato está correto. Use vírgula como separador.")
+                    st.info("Verifique o formato. Use vírgula (,) para separar colunas.")
+                    
     with tab3:
         st.subheader("📋 Dados Coletados")
 
@@ -1337,8 +1337,8 @@ def main():
     if menu in paginas:
         paginas[menu]()
 
-def processar_importacao(df, projeto_id, modo_import):
-    """Importa dados para o projeto"""
+def processar_importacao(df, projeto_id, modo_import, prefixo="default"):
+    """Importa dados para o projeto. prefixo deve ser único por aba."""
     colunas_necessarias = ['parcela', 'variavel_codigo', 'valor']
     colunas_faltando = [c for c in colunas_necessarias if c not in df.columns]
 
@@ -1347,7 +1347,21 @@ def processar_importacao(df, projeto_id, modo_import):
         st.write(f"Colunas encontradas: {', '.join(df.columns)}")
         return
 
-    # Diagnóstico de parcelas e variáveis
+    # Converter valor para número, tratando vírgula como decimal
+    df['valor'] = df['valor'].astype(str).str.replace(',', '.').str.strip()
+    df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
+
+    # Remover linhas com valor inválido
+    antes = len(df)
+    df = df.dropna(subset=['valor'])
+    depois = len(df)
+    if antes != depois:
+        st.warning(f"⚠️ {antes - depois} linhas com valor inválido foram ignoradas")
+
+    if len(df) == 0:
+        st.error("❌ Nenhuma linha válida para importar após processar os valores.")
+        return
+
     parcelas_csv = [str(p).strip() for p in df['parcela'].unique()]
     vars_csv = [str(v).strip() for v in df['variavel_codigo'].unique()]
 
@@ -1362,82 +1376,72 @@ def processar_importacao(df, projeto_id, modo_import):
 
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        st.write(f"**Parcelas no arquivo:** {len(parcelas_csv)}")
+        st.write(f"**Parcelas:** {len(parcelas_csv)} no arquivo")
         if parcelas_nok:
-            st.error(f"❌ {len(parcelas_nok)} NÃO encontradas: {', '.join(parcelas_nok[:5])}")
+            st.error(f"❌ {len(parcelas_nok)} não encontradas: {', '.join(parcelas_nok[:5])}")
         else:
-            st.success(f"✅ Todas as {len(parcelas_csv)} existem no sistema")
-
+            st.success(f"✅ Todas existem no sistema")
     with col_d2:
-        st.write(f"**Variáveis no arquivo:** {len(vars_csv)}")
+        st.write(f"**Variáveis:** {len(vars_csv)} no arquivo")
         if vars_nok:
-            st.error(f"❌ {len(vars_nok)} NÃO encontradas: {', '.join(vars_nok[:5])}")
+            st.error(f"❌ {len(vars_nok)} não encontradas: {', '.join(vars_nok[:5])}")
         else:
-            st.success(f"✅ Todas as {len(vars_csv)} existem no sistema")
+            st.success(f"✅ Todas existem no sistema")
 
     if parcelas_nok or vars_nok:
         st.warning("⚠️ Corrija os problemas acima antes de importar.")
         return
 
     substituir = "Substituir" in modo_import
-    session_key = f"import_confirmado_{projeto_id}"
+    session_key = f"import_confirmado_{projeto_id}_{prefixo}"
 
-    # Inicializar estado de confirmação
     if session_key not in st.session_state:
         st.session_state[session_key] = False
 
     if substituir:
-        st.warning("⚠️ ATENÇÃO: Os dados atuais deste projeto serão APAGADOS e substituídos pelos novos!")
+        st.warning("⚠️ ATENÇÃO: Os dados atuais serão APAGADOS e substituídos!")
 
         if st.session_state[session_key]:
-            st.info("✅ Confirmação dada. Clique em **Confirmar e Importar** para prosseguir.")
+            st.info("✅ Confirmação registrada. Clique novamente em **Confirmar e Importar**.")
 
-        col_btn = st.columns([1, 3])
-        with col_btn[0]:
-            if st.button("✅ Confirmar e Importar", type="primary", key=f"btn_confirm_substituir_{projeto_id}"):
-                if not st.session_state[session_key]:
-                    st.session_state[session_key] = True
+        if st.button("✅ Confirmar e Importar", type="primary", key=f"btn_imp_sub_{prefixo}_{projeto_id}"):
+            if not st.session_state[session_key]:
+                st.session_state[session_key] = True
+                st.rerun()
+            else:
+                with st.spinner("Apagando dados antigos..."):
+                    execute_query("""
+                        DELETE FROM medicoes WHERE parcela_id IN 
+                        (SELECT id FROM parcelas WHERE projeto_id = ?)
+                    """, (projeto_id,))
+                
+                with st.spinner(f"Importando {len(df)} registros..."):
+                    count, erros, erros_detalhes = executar_importacao(df, projeto_id)
+                
+                st.session_state[session_key] = False
+                
+                st.success(f"✅ **{count} registros importados com sucesso!**")
+                if erros > 0:
+                    st.warning(f"❌ {erros} erros")
+                    with st.expander("Ver detalhes"):
+                        for e in erros_detalhes[:20]:
+                            st.write(f"• {e}")
+                
+                if count > 0:
                     st.rerun()
-                else:
-                    # Já confirmou - executar importação
-                    with st.spinner("Apagando dados antigos..."):
-                        execute_query("""
-                            DELETE FROM medicoes WHERE parcela_id IN 
-                            (SELECT id FROM parcelas WHERE projeto_id = ?)
-                        """, (projeto_id,))
-                    
-                    with st.spinner(f"Importando {len(df)} registros..."):
-                        count, erros, erros_detalhes = executar_importacao(df, projeto_id)
-                        
-                    st.session_state[session_key] = False
-                    
-                    st.markdown("---")
-                    st.success(f"✅ **Dados substituídos com sucesso!**")
-                    st.write(f"📥 **{count}** registros importados")
-                    if erros > 0:
-                        st.warning(f"❌ **{erros}** erros")
-                        with st.expander("Ver detalhes"):
-                            for e in erros_detalhes[:20]:
-                                st.write(f"• {e}")
-                    
-                    if count > 0:
-                        st.rerun()
     else:
-        if st.button("📥 Importar Dados", type="primary", key=f"btn_import_adicionar_{projeto_id}"):
+        if st.button("📥 Importar Dados", type="primary", key=f"btn_imp_add_{prefixo}_{projeto_id}"):
             with st.spinner(f"Importando {len(df)} registros..."):
                 count, erros, erros_detalhes = executar_importacao(df, projeto_id)
 
-            st.markdown("---")
-            st.success(f"✅ **Importação concluída!**")
-            st.write(f"📥 **{count}** registros importados")
+            st.success(f"✅ **{count} registros importados!**")
             if erros > 0:
-                st.warning(f"❌ **{erros}** erros")
+                st.warning(f"❌ {erros} erros")
                 with st.expander("Ver detalhes"):
                     for e in erros_detalhes[:20]:
                         st.write(f"• {e}")
 
             if count > 0:
                 st.rerun()
-
 if __name__ == "__main__":
     main()
