@@ -13,6 +13,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
+import time
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
@@ -531,7 +532,8 @@ def tela_medicoes():
             if arquivo is not None:
                 try:
                     if arquivo.name.endswith(".csv"):
-                        df = pd.read_csv(arquivo)
+                        # Usando sep=None para aceitar tanto vírgula quanto ponto e vírgula
+                        df = pd.read_csv(arquivo, sep=None, engine='python')
                     else:
                         df = pd.read_excel(arquivo)
                     
@@ -569,7 +571,8 @@ def tela_medicoes():
             if csv_texto.strip():
                 try:
                     from io import StringIO
-                    df = pd.read_csv(StringIO(csv_texto))
+                    # Adicionado suporte automático a ponto e vírgula ou tab
+                    df = pd.read_csv(StringIO(csv_texto), sep=None, engine='python')
                     df.columns = [c.strip().lower() for c in df.columns]
                     
                     st.write("**Preview:**")
@@ -581,7 +584,7 @@ def tela_medicoes():
                 except Exception as e:
                     st.error(f"❌ Erro ao ler CSV: {e}")
                     st.info("Verifique o formato. Use vírgula (,) para separar colunas.")
-                    
+
     with tab3:
         st.subheader("📋 Dados Coletados")
 
@@ -715,7 +718,7 @@ def tela_medicoes():
                             st.rerun()
         else:
             st.info("Nenhum dado coletado ainda.")
-            
+
 def tela_analises():
     st.title("📊 Análises Estatísticas")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
@@ -1264,6 +1267,7 @@ def tela_relatorios():
         """, (projeto_id,))
         csv = dados.to_csv(index=False).encode("utf-8")
         st.download_button(label="📥 Baixar CSV", data=csv, file_name=f"dados_{projeto['titulo'][:30]}.csv", mime="text/csv")
+
 def tela_compartilhar():
     st.title("👥 Compartilhar Projetos")
     projetos = query_to_df("SELECT id, titulo FROM projetos ORDER BY titulo")
@@ -1428,6 +1432,7 @@ def processar_importacao(df, projeto_id, modo_import, prefixo="default"):
                             st.write(f"• {e}")
                 
                 if count > 0:
+                    time.sleep(2.5)
                     st.rerun()
     else:
         if st.button("📥 Importar Dados", type="primary", key=f"btn_imp_add_{prefixo}_{projeto_id}"):
@@ -1442,6 +1447,7 @@ def processar_importacao(df, projeto_id, modo_import, prefixo="default"):
                         st.write(f"• {e}")
 
             if count > 0:
+                time.sleep(2.5)
                 st.rerun()
 
 def executar_importacao(df, projeto_id):
@@ -1479,9 +1485,12 @@ def executar_importacao(df, projeto_id):
                 progresso.progress((idx + 1) / len(df))
                 continue
 
+            # Tratamento robusto de Data (lidando com Timestamps do Excel)
             data_val = row.get("data", "")
             if pd.isna(data_val) or str(data_val).strip() == "":
                 data_val = datetime.now().strftime("%Y-%m-%d")
+            elif isinstance(data_val, pd.Timestamp):
+                data_val = data_val.strftime("%Y-%m-%d") # Converte data do Excel para string
             else:
                 data_val = str(data_val).strip()
 
@@ -1491,11 +1500,15 @@ def executar_importacao(df, projeto_id):
             else:
                 estadio_val = str(estadio_val).strip()
 
+            # A MÁGICA ESTÁ AQUI: Converter numpy.int64 para int nativo do Python
+            p_id = int(parc.iloc[0]["id"])
+            v_id = int(var.iloc[0]["id"])
+
             execute_query(
                 """INSERT INTO medicoes 
                    (parcela_id, variavel_id, valor, data_medicao, estadio_fenologico) 
                    VALUES (?, ?, ?, ?, ?)""",
-                (parc.iloc[0]["id"], var.iloc[0]["id"], valor, data_val, estadio_val)
+                (p_id, v_id, valor, data_val, estadio_val)
             )
             count += 1
 
