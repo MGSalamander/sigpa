@@ -3,7 +3,6 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import seaborn as sns
 from scipy import stats
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm

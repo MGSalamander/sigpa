@@ -4,6 +4,5 @@ numpy
 scipy
 statsmodels
 openpyxl
-seaborn
 reportlab
 plotly
